@@ -1,0 +1,14 @@
+CAMERA CALIBRATION PARAMETERS
+========================================
+
+Image size: 1920 x 1080
+Reprojection error (RMS): 0.5830 pixels
+Mean per-corner error:    0.4760 pixels
+
+Camera Matrix:
+[[1.66361916e+03 0.00000000e+00 9.51666002e+02]
+ [0.00000000e+00 1.66298012e+03 5.35484142e+02]
+ [0.00000000e+00 0.00000000e+00 1.00000000e+00]]
+
+Distortion Coefficients:
+[ 0.10738895 -0.00913909  0.00874713  0.01110458 -0.38399903]
