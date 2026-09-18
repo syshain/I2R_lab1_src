@@ -1,8 +1,8 @@
 # Lab 1 — Repository Structure
 
-This file documents the canonical folder/module template used by this lab. Labs 2 and 3 follow the same convention, so a student who learns the layout here can navigate any of the three labs identically.
+This file documents the canonical folder/module template used by this lab. 
 
-Lab 1 is **camera + hand-eye calibration** in Python: calibrate the wrist camera intrinsics from a chessboard, capture paired robot/artifact poses, then solve for the end-effector-to-camera transform `T_6_C`. The active pipeline follows the shared `src/` template below; earlier exploratory scripts and the MATLAB forward-kinematics part are frozen provenance under `reference/`.
+Lab 1 is **camera + hand-eye calibration** in Python: calibrate the wrist camera intrinsics from a chessboard, capture paired robot/artifact poses, then solve for the end-effector-to-camera transform `T_6_C`. The active pipeline follows the shared `src/` template below; 
 
 ## Notation
 
@@ -22,7 +22,7 @@ Key transforms:
 - `T_6_C` : end-effector → camera (the unknown solved by hand-eye calibration).
 - `T_0_W = T_0_6 @ T_6_C @ T_C_W` : reconstructed artifact position in the base frame; a correct calibration makes this constant across poses.
 
-**Formulation: eye-to-hand.** The wrist camera observes a *static* bench artifact, so the loop closes as `T_0_W = T_0_6(i) @ X @ T_C_W(i)` with `X = T_6_C` constant. This is the **eye-to-hand** problem (not eye-in-hand). The solver exploits the conjugation relation `A_i = X·B_p,i·X⁻¹`, where `A_i` is the base-frame relative motion between consecutive poses and `B_p,i` the camera-frame relative motion — rotation solved by least squares on stacked rotvecs, translation by a linear system. See `solve_eye_to_hand()` in `get_transform.py`.
+**Formulation: eye-to-hand.** The wrist camera observes a *static* bench artifact, so the loop closes as `T_0_W = T_0_6(i) @ X @ T_C_W(i)` with `X = T_6_C` constant. This is the **eye-to-hand** problem. The solver exploits the conjugation relation `A_i = X·B_p,i·X⁻¹`, where `A_i` is the base-frame relative motion between consecutive poses and `B_p,i` the camera-frame relative motion — rotation solved by least squares on stacked rotvecs, translation by a linear system. See `solve_eye_to_hand()` in `get_transform.py`.
 
 Two physical artifacts are used:
 - **Chessboard** — printed checker pattern for camera intrinsics (`camera_calibration.py`).
@@ -33,12 +33,7 @@ Two physical artifacts are used:
 ```
 Lab_1/
 ├── src/          # Active Python code. One flat directory of single-responsibility scripts.
-├── data/         # Calibration artefacts (.npy/.npz/.txt) + captured images. Produced/consumed at runtime.
-├── reference/    # Frozen provenance, never imported by src/:
-│   ├── calib_3D.py                 # Superseded 3-D calibration attempt.
-│   ├── hand_eye_solver.py          # Earlier hand-eye solver, replaced by get_transform.py.
-│   ├── camera_calibration.pdf      # Original camera-calibration notes.
-│   └── MATLAB_FK/                  # Part A forward kinematics (fk_lite6.m, position_ufactory_modifiedDH.mlx).
+├── data/         # Calibration artifacts (.npy/.npz/.txt) + captured images. Produced/consumed at runtime.
 ├── docs/         # This structure guide.
 ├── requirements.txt
 └── commit-log.md                   # Human-readable version history.
@@ -47,8 +42,7 @@ Lab_1/
 Rules that make the template portable across labs:
 
 1. **`src/` is the only place active Python code lives.** It is a *flat* directory — no nested packages, no `__init__.py`. Scripts may import shared helpers from sibling modules (`fk_lite6`, `lab_config`, `robot_io`, `get_transform.resolve_T_0_6`) but exchange calibration results through files in `data/`. This keeps each stage independently runnable.
-2. **`data/` holds binary calibration output and captured images, not source.** Files here are produced by one stage and consumed read-only by the next. Paths into `data/` are resolved relative to the repo via `_DATA_DIR = Path(__file__).resolve().parent.parent / 'data'` in each script, never hardcoded absolute paths — so a script runs correctly no matter what the current working directory is.
-3. **`reference/` is for provenance, not execution.** Code archived here (the superseded 3-D calibration, the earlier hand-eye solver, the MATLAB FK part) is where a current design decision came from. It is intentionally *not* on the Python import path so students cannot accidentally depend on superseded logic.
+2. **`data/` holds binary calibration output, captured images and run results in human-readable format, not source.** Files here are produced by one stage and consumed by the next. Paths into `data/` are resolved relative to the repo via `_DATA_DIR = Path(__file__).resolve().parent.parent / 'data'` in each script, never hardcoded absolute paths — so a script runs correctly no matter what the current working directory is.
 
 ## Module roles (Python pipeline)
 
@@ -70,21 +64,32 @@ The stages run in order; each reads the previous stage's output from `data/` and
 
 ## Units
 
-Internal maths and all stored transforms use **millimetres + degrees**, matching the xArm SDK (`get_position()` returns `[x, y, z, roll, pitch, yaw]` in mm/deg) and the ArUco PnP solve (artifact translation in mm). Joint angles are handled internally in radians by `fk_lite6` and `robot_io.read_joints_rad`; the SDK boundary reports degrees. No metre conversion layer is needed because mm is the natural unit throughout.
+Internal maths and all stored transforms use **millimetres + degrees**, matching the xArm SDK (`get_position()` returns `[x, y, z, roll, pitch, yaw]` in mm/deg) and the ArUco PnP solve (artifact translation in mm). Joint angles are handled internally in radians by `fk_lite6` and `robot_io.read_joints_rad`; the SDK boundary reports degrees. 
 
 ## How to run
-
-From anywhere (scripts resolve `data/` themselves):
-
-```bash
-python3 src/image_capture.py              # 1. grab chessboard frames
-python3 src/camera_calibration.py         # 2. estimate intrinsics
-python3 src/transformation_calibration.py # 3. record pose pairs (robot connected)
-python3 src/get_transform.py              # 4a. direct hand-eye solve
-python3 src/ransac_calibration.py         # 4b. robust (RANSAC) hand-eye solve
-python3 src/validate_calibration.py       # 5. validate at a relocated artifact
+Create a virtual environment in the main directory as follows
+```bat
+python.exe -m venv .venv
 ```
+Activate the virtual environment
+```bat
+.\.venv\Scripts\activate
+```
+The command line should now have `(.venv)` preceding the prompt. If running the code for the first time, install all required Python libraries with the following command
+```bat
+pip install -r .\requirements.txt
+```
+Once the pip installer finishes, the code is ready to run.
+Open `lab_config.py` and ensure the config parameters are correct. `ROBOT_IP` is found on the control box of the robot.
+Run the stages in order from the repository root (grab frames, estimate intrinsics, record pose pairs, direct solve, robust solve, then validate — the scripts resolve `data/` themselves, so no need to change directory):
 
-Part A (MATLAB): open `reference/MATLAB_FK/fk_lite6.m` in MATLAB and run it. The Python equivalent skeleton is `src/fk_lite6.py`.
+```bat
+python.exe src\image_capture.py
+python.exe src\camera_calibration.py
+python.exe src\transformation_calibration.py
+python.exe src\get_transform.py
+python.exe src\ransac_calibration.py
+python.exe src\validate_calibration.py
+```
 
 Requires: Python 3.12+, OpenCV 4.x, NumPy, SciPy, Matplotlib, xArm Python SDK, and a reachable UFACTORY Lite 6 at `192.168.1.153`.
