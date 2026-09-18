@@ -5,3 +5,5 @@
 *.jpg
 __*__
 reference/
+data/*
+

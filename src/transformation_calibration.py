@@ -1,12 +1,28 @@
-"""Capture paired robot + ArUco-board poses for hand-eye calibration.
+"""Capture paired (T_0_6, T_C_W) poses for hand-eye calibration.
 
-Runs a live detection loop over the wrist-mounted camera; when the user hits
-'c' it records the current T_base_ee alongside the detected T_cam_board, and
-'s' saves the collected pairs into ../data/calibration_data.npy.
+Worksheet notation:
+    base frame   : 0          end-effector frame : 6
+    camera frame : C          ArUco artifact     : W
 
-The board geometry is read from ../data/board_config.json (a 3-D polyhedron of
-markers), matching Labs 2 and 3. The corner coordinates are defined at 30 mm
-marker scale in the config and scaled up by 4/3 to the physical 40 mm markers.
+For each pose we record:
+    T_0_6 : base -> end-effector transform, computed by forward kinematics
+            from the robot's joint angles (fk_lite6.fk_lite6).
+    T_C_W : camera -> ArUco-artifact transform, recovered from the detected
+            marker corners + board_config.json geometry.
+
+The artifact geometry is read from ../data/board_config.json (a 3-D polyhedron
+of markers), matching Labs 2 and 3. The corner coordinates are defined at a
+30 mm marker scale in the config and scaled up by ARUCO_ARTIFACT_SCALE to the
+physical 40 mm markers.
+
+Controls:
+    SPACE - capture the current pose
+    'q'   - quit and save what has been captured
+    ESC   - abort without saving
+
+The collected pairs are saved to ../data/calibration_data.npy, which is the
+input consumed by get_transform.py (direct solve) and ransac_calibration.py
+(robust solve).
 """
 
 import json
@@ -19,7 +35,8 @@ from scipy.spatial.transform import Rotation as R
 
 from lab_config import (
     ROBOT_IP, CAMERA_INDEX, FRAME_WIDTH, FRAME_HEIGHT,
-    ARUCO_BOARD_SCALE, ARUCO_REPROJ_REJECT_PX,
+    ARUCO_DICT_NAME, ARUCO_MARKER_IDS,
+    ARUCO_ARTIFACT_SCALE, ARUCO_REPROJ_REJECT_PX,
 )
 from fk_lite6 import fk_lite6
 import robot_io
@@ -28,22 +45,22 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 _DATA_DIR = _SCRIPT_DIR.parent / 'data'
 
 # Per-marker corner winding correction (matches Labs 2/3 detector).
-_CORNER_ROLL = {0: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+_CORNER_ROLL = {mid: 0 for mid in ARUCO_MARKER_IDS}
 
 
 def get_robot_end_effector_pose(arm):
-    """Return (T_base_ee, joints_deg, raw_pose) from the arm's current state.
+    """Return (T_0_6, joints_deg, raw_pose) from the arm's current state.
 
-    T_base_ee is derived by forward kinematics from the reported joint angles
+    T_0_6 is derived by forward kinematics from the reported joint angles
     (fk_lite6), NOT taken from the controller's cartesian get_position(). This
     keeps the hand-eye inputs consistent with the DH model used everywhere else
     in Lab 1.
 
     Returns:
-        T_base_ee   : 4x4 base->EE transform (translation in mm).
-        joints_deg  : list of 6 joint angles in DEGREES (as reported by SDK).
-        raw_pose    : controller's [x,y,z,roll,pitch,yaw] (mm,deg), kept only as
-                      a cross-check against the FK result.
+        T_0_6      : 4x4 base->EE transform (translation in mm).
+        joints_deg : list of 6 joint angles in DEGREES (as reported by SDK).
+        raw_pose   : controller's [x,y,z,roll,pitch,yaw] (mm,deg), kept only as
+                     a cross-check against the FK result.
     """
     try:
         q_rad = robot_io.read_joints_rad(arm)   # (6,) radians
@@ -52,7 +69,7 @@ def get_robot_end_effector_pose(arm):
         return None, None, None
 
     joints_deg = [float(v) for v in np.rad2deg(q_rad)]
-    T_base_ee = fk_lite6(np.asarray(q_rad, dtype=np.float64))
+    T_0_6 = fk_lite6(np.asarray(q_rad, dtype=np.float64))
 
     code_p, pose_data = arm.get_position()
     if code_p != 0:
@@ -62,11 +79,11 @@ def get_robot_end_effector_pose(arm):
         x, y, z, roll, pitch, yaw = pose_data
         raw_pose = [float(v) for v in (x, y, z, roll, pitch, yaw)]
 
-    return T_base_ee, joints_deg, raw_pose
+    return T_0_6, joints_deg, raw_pose
 
 
-class ArucoBoardDetector:
-    """3-D ArUco polyhedron detector driven by board_config.json."""
+class ArucoArtifactDetector:
+    """3-D ArUco artifact detector driven by board_config.json."""
 
     def __init__(self, camera_index=None):
         if camera_index is None:
@@ -74,31 +91,32 @@ class ArucoBoardDetector:
         self.camera_matrix = np.load(str(_DATA_DIR / 'camera_matrix.npy'))
         self.dist_coeffs = np.load(str(_DATA_DIR / 'dist_coeffs.npy'))
 
-        self.aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_6X6_250)
+        self.aruco_dict = aruco.getPredefinedDictionary(getattr(aruco, ARUCO_DICT_NAME))
         params = aruco.DetectorParameters()
         params.cornerRefinementMethod = aruco.CORNER_REFINE_SUBPIX
         self.detector = aruco.ArucoDetector(self.aruco_dict, params)
 
-        self._build_board_model()
+        self._build_artifact_model()
 
         self.arm = robot_io.connect_arm(ROBOT_IP)
         self.cap = None
         self.camera_index = camera_index
         self.calibration_data = []
 
-    def _build_board_model(self):
+    def _build_artifact_model(self):
         """Load marker corners from board_config.json, scale, and re-center."""
         config_path = str(_DATA_DIR / 'board_config.json')
         with open(config_path, 'r') as f:
             cfg = json.load(f)
 
-        board = cfg['toolList'][0]
-        ids = board['marker_ids']
-        corners = board['marker_corners_mm']
+        artifact = next((t for t in cfg['toolList'] if t['id'] == 'ArucoBoard'),
+                        cfg['toolList'][0])
+        ids = artifact['marker_ids']
+        corners = artifact['marker_corners_mm']
 
         scaled = {}
         for mid, raw in zip(ids, corners):
-            pts = np.array(raw, dtype=np.float64) * ARUCO_BOARD_SCALE
+            pts = np.array(raw, dtype=np.float64) * ARUCO_ARTIFACT_SCALE
             roll = _CORNER_ROLL.get(mid, 0)
             scaled[mid] = np.roll(pts, -roll, axis=0)
 
@@ -110,7 +128,7 @@ class ArucoBoardDetector:
         self.centroid_offset = centroid
 
         print(f"[Model] Loaded {len(ids)} markers  "
-              f"scale={ARUCO_BOARD_SCALE:.4f}  "
+              f"scale={ARUCO_ARTIFACT_SCALE:.4f}  "
               f"centroid=[{centroid[0]:.2f},{centroid[1]:.2f},{centroid[2]:.2f}]")
 
     def start_camera(self):
@@ -125,15 +143,16 @@ class ArucoBoardDetector:
 
         print(f"✓ Camera {self.camera_index} opened")
         print(f"✓ OpenCV version: {cv2.__version__}")
-        print(f"✓ Board: {len(self.marker_ids_list)} markers "
+        print(f"✓ Artifact: {len(self.marker_ids_list)} markers "
               f"(IDs {self.marker_ids_list}) from board_config.json")
         return True
 
-    def detect_board(self, frame):
-        """Detect the ArUco board and estimate its pose via solvePnP.
+    def detect_artifact(self, frame):
+        """Detect the ArUco artifact and estimate its pose via solvePnP.
 
-        Returns (success, T_cam_board, rvec, tvec, reproj_error); T_cam_board
-        is 4x4. High reprojection error (>15 px) is treated as a failed frame.
+        Returns (success, T_C_W, rvec, tvec, reproj_error); T_C_W is 4x4.
+        High reprojection error (> ARUCO_REPROJ_REJECT_PX px) is treated as a
+        failed frame.
         """
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         corners, ids, _ = self.detector.detectMarkers(gray)
@@ -192,14 +211,14 @@ class ArucoBoardDetector:
             return False, None, None, None, reproj_error
 
         R_mat, _ = cv2.Rodrigues(rvec)
-        T_cam_board = np.eye(4, dtype=np.float64)
-        T_cam_board[:3, :3] = R_mat
-        T_cam_board[:3, 3] = tvec.flatten()
+        T_C_W = np.eye(4, dtype=np.float64)
+        T_C_W[:3, :3] = R_mat
+        T_C_W[:3, 3] = tvec.flatten()
 
-        return True, T_cam_board, rvec, tvec, reproj_error
+        return True, T_C_W, rvec, tvec, reproj_error
 
     def draw_detection(self, frame, rvec, tvec, ids, corners, success):
-        """Overlay detected markers and the board axes onto the frame."""
+        """Overlay detected markers and the artifact axes onto the frame."""
         if ids is not None:
             aruco.drawDetectedMarkers(frame, corners, ids)
 
@@ -208,7 +227,7 @@ class ArucoBoardDetector:
                 frame, self.camera_matrix, self.dist_coeffs,
                 rvec, tvec, 40.0
             )
-            cv2.putText(frame, "Board Detected", (10, 30),
+            cv2.putText(frame, "Artifact Detected", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
             pos = tvec.flatten()
             cv2.putText(frame, f"X: {pos[0]:6.1f} mm", (10, 60),
@@ -218,17 +237,13 @@ class ArucoBoardDetector:
             cv2.putText(frame, f"Z: {pos[2]:6.1f} mm", (10, 120),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
         else:
-            cv2.putText(frame, "✗ Board not detected", (10, 30),
+            cv2.putText(frame, "✗ Artifact not detected", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
         return frame
 
-    def get_robot_end_effector_pose(self):
-        """Fetch the current (T_base_ee, raw_pose) from the connected arm."""
-        return get_robot_end_effector_pose(self.arm)
-
-    def capture_calibration_pose(self):
-        """Record one (T_base_ee, T_cam_board) pair for hand-eye calibration."""
+    def capture_pose(self, pose_id):
+        """Record one (T_0_6, T_C_W) pair for hand-eye calibration."""
         if self.cap is None:
             self.start_camera()
 
@@ -237,30 +252,30 @@ class ArucoBoardDetector:
             print("Failed to capture frame")
             return False
 
-        success, T_cam_board, rvec, tvec, reproj = self.detect_board(frame)
+        success, T_C_W, rvec, tvec, reproj = self.detect_artifact(frame)
         if not success:
-            print("Failed to detect the ArUco board")
+            print("Failed to detect the ArUco artifact")
             return False
 
-        T_base_ee, joints_deg, raw_pose = self.get_robot_end_effector_pose()
-        if T_base_ee is None:
+        T_0_6, joints_deg, raw_pose = get_robot_end_effector_pose(self.arm)
+        if T_0_6 is None:
             print("Failed to read robot pose")
             return False
 
         self.calibration_data.append({
-            'T_base_ee': T_base_ee,          # FK-derived (authoritative)
-            'robot_joints': joints_deg,      # [q1..q6] degrees, from get_angle()
-            'robot_pose_raw': raw_pose,      # cartesian cross-check (may be None)
-            'T_cam_board': T_cam_board,
+            'pose_id': pose_id,
+            'T_0_6': T_0_6,               # FK-derived (authoritative)
+            'robot_joints': joints_deg,    # [q1..q6] degrees, from get_angle()
+            'robot_pose_raw': raw_pose,    # cartesian cross-check (may be None)
+            'T_C_W': T_C_W,
             'reproj_error_px': reproj,
-            'timestamp': cv2.getTickCount()
+            'timestamp': cv2.getTickCount(),
         })
 
-        ee_pos = T_base_ee[:3, 3]
-        fk_rpy = R.from_matrix(T_base_ee[:3, :3]).as_euler('xyz', degrees=True)
+        ee_pos = T_0_6[:3, 3]
+        fk_rpy = R.from_matrix(T_0_6[:3, :3]).as_euler('xyz', degrees=True)
 
-        print(f"✓ Captured pose pair #{len(self.calibration_data)} "
-              f"(reproj {reproj:.2f} px)")
+        print(f"✓ Captured pose #{pose_id} (reproj {reproj:.2f} px)")
         print(f"  Joints (deg): {[round(j, 2) for j in joints_deg]}")
         print(f"  EE via FK   : pos=({ee_pos[0]:.1f},{ee_pos[1]:.1f},{ee_pos[2]:.1f}) mm  "
               f"RPY=({fk_rpy[0]:.1f},{fk_rpy[1]:.1f},{fk_rpy[2]:.1f})°")
@@ -269,84 +284,82 @@ class ArucoBoardDetector:
             dx = ee_pos - np.array([x, y, z])
             print(f"  Cross-check   : ctrl pos=({x:.1f},{y:.1f},{z:.1f}) mm  "
                   f"|FK−ctrl|={np.linalg.norm(dx):.2f} mm")
-        print("Cam to board transformation")
-        for row in T_cam_board:
-            print(f"{row[0]} {row[1]} {row[2]} {row[3]}")
+        print("Cam to artifact transformation T_C_W:")
+        for row in T_C_W:
+            print(f"{row[0]:8.3f} {row[1]:8.3f} {row[2]:8.3f} {row[3]:8.3f}")
 
-        euler_cam_board = R.from_matrix(T_cam_board[:3, :3]).as_euler('zxy', degrees=True)
-        print(f"  Board euler: ({euler_cam_board[0]:.1f}, {euler_cam_board[1]:.1f}, {euler_cam_board[2]:.1f}) deg")
+        euler_C_W = R.from_matrix(T_C_W[:3, :3]).as_euler('zxy', degrees=True)
+        print(f"  Artifact euler: ({euler_C_W[0]:.1f}, {euler_C_W[1]:.1f}, {euler_C_W[2]:.1f}) deg")
 
         return True
-    
+
     def run(self, mode='detect'):
         """Main loop."""
         if not self.start_camera():
             return
-        
+
         self.calibration_data = []
-        
+
         print("\n" + "="*60)
-        print(f"ARUCO BOARD DETECTION - Mode: {mode.upper()}")
+        print(f"ARUCO ARTIFACT DETECTION - Mode: {mode.upper()}")
         print("="*60)
         print("Controls:")
-        print("  'q' - Quit")
-        
-        if mode == 'calibrate':
-            print("  'c' - Capture current pose (robot + marker)")
-            print("  's' - Save captured data")
-            print(f"  Currently captured: {len(self.calibration_data)} poses")
-        else:
-            print("  'c' - Print current transformation")
-        
+        print("  SPACE - Capture current pose (robot + artifact)")
+        print("  'q'   - Quit and save captured data")
+        print("  ESC   - Abort without saving")
         print("="*60 + "\n")
-        
+
+        pose_id = 1
         while True:
             ret, frame = self.cap.read()
             if not ret:
                 print("Failed to grab frame")
                 break
-            
-            success, T_cam_board, rvec, tvec, _reproj = self.detect_board(frame)
+
+            success, T_C_W, rvec, tvec, _reproj = self.detect_artifact(frame)
 
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             corners, ids, _ = self.detector.detectMarkers(gray)
-            
+
             frame = self.draw_detection(frame, rvec, tvec, ids, corners, success)
-            frame = cv2.resize(frame, None, fx=0.5,fy=0.5)
-            cv2.imshow('Aruco Board Detection', frame)
-            
+            frame = cv2.resize(frame, None, fx=0.5, fy=0.5)
+
             if mode == 'calibrate':
-                cv2.putText(frame, f"Calibration poses: {len(self.calibration_data)}", 
-                           (10, 100),
-                           cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 200, 255), 2)
-            
-            cv2.imshow('ArUco Board Detection', frame)
-            
+                cv2.putText(frame, f"Calibration poses: {len(self.calibration_data)}",
+                            (10, 100),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 200, 255), 2)
+
+            cv2.imshow('ArUco Artifact Detection', frame)
+
             key = cv2.waitKey(1) & 0xFF
-            
+
             if key == ord('q'):
                 break
-            elif key == ord('c'):
+            elif key == 27:  # ESC
+                print("Aborted without saving.")
+                break
+            elif key == 32:  # SPACE
                 if mode == 'calibrate':
-                    self.capture_calibration_pose()
+                    if self.capture_pose(pose_id):
+                        pose_id += 1
                 elif success:
                     print("\n" + "="*40)
-                    print("T_cam_board (Camera to Board):")
+                    print("T_C_W (Camera to Artifact):")
                     print("="*40)
-                    print(T_cam_board)
+                    print(T_C_W)
                     print(f"\nPosition: ({tvec[0][0]:.1f}, {tvec[1][0]:.1f}, {tvec[2][0]:.1f}) mm")
-            elif key == ord('s') and mode == 'calibrate':
-                if len(self.calibration_data) > 0:
-                    np.save(str(_DATA_DIR / 'calibration_data.npy'), self.calibration_data)
-                    print(f"✓ Saved {len(self.calibration_data)} calibration poses")
-                else:
-                    print("No calibration data to save. Press 'c' to capture poses first.")
-        
+
         self.cap.release()
         cv2.destroyAllWindows()
+
+        if mode == 'calibrate' and self.calibration_data:
+            np.save(str(_DATA_DIR / 'calibration_data.npy'), self.calibration_data)
+            print(f"✓ Saved {len(self.calibration_data)} calibration poses")
+        elif mode == 'calibrate':
+            print("No calibration data to save.")
 
 
 if __name__ == "__main__":
     print(f"Connecting to UFACTORY Lite 6 at {ROBOT_IP}...")
-    detector = ArucoBoardDetector()
+    detector = ArucoArtifactDetector()
     detector.run(mode='calibrate')

@@ -29,3 +29,10 @@ Initial commit of working lab 1 code
 - get_transform_3D.py saves the matrix as T_ee_cam_normal.npy
 - ransac_calibration.py saves as _ransac.npy
 - validation script uses both and compares
+
+# v5 - Eye-to-hand calibration fix
+### 18 Sep 2026
+### Fixed POOR hand-eye result: setup is eye-to-hand but code solved eye-in-hand (and inverted)
+- Replaced cv2.calibrateHandEye with self-contained AX=XBX^-1 solver in get_transform.py
+- Renamed all transformation matrices to follow worksheet convention
+- Removed fallback and calibration data from commit

@@ -47,7 +47,7 @@ def fk_lite6(q):
         q: iterable of 6 joint angles in RADIANS.
 
     Returns:
-        T_base_ee: 4x4 float64 homogeneous matrix, translation in MM.
+        T_0_6: 4x4 float64 homogeneous matrix (base -> end-effector), translation in MM.
     """
     q = np.asarray(q, dtype=np.float64)
     if q.shape != (6,):

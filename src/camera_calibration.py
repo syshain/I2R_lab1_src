@@ -12,7 +12,8 @@ import glob
 import os
 from pathlib import Path
 
-from lab_config import CHESSBOARD_SIZE, SQUARE_SIZE_MM, CALIB_IMAGE_PATTERN
+from lab_config import (CHESSBOARD_SIZE, SQUARE_SIZE_MM, CALIB_IMAGE_PATTERN,
+                        CAM_CALIB_RMS_GOOD_TARGET_PX, CAM_CALIB_RMS_RECAPTURE_PX)
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _DATA_DIR = _SCRIPT_DIR.parent / 'data'
@@ -107,37 +108,24 @@ def calibrate_camera(images_path='*.jpg', chessboard_size=(10, 7), square_size_m
     rms_reproj_error, camera_matrix, dist_coeffs, rvecs, tvecs = cv.calibrateCamera(
         objpoints, imgpoints, (w, h), None, None
     )
-    
-    # Per-image mean L2 reprojection error (secondary diagnostic).
-    # NOTE: imgpoints[i] comes back shaped (N,1,2); flatten to (N,2) before
-    # comparing against the reprojected points, otherwise broadcasting blows up.
-    per_image_errors = []
-    for i in range(len(objpoints)):
-        detected = imgpoints[i].reshape(-1, 2)
-        imgpoints2, _ = cv.projectPoints(objpoints[i], rvecs[i], tvecs[i],
-                                         camera_matrix, dist_coeffs)
-        reprojected = imgpoints2.reshape(-1, 2)
-        err = np.linalg.norm(detected - reprojected, axis=1).mean()
-        per_image_errors.append(err)
-    mean_per_corner = np.mean(per_image_errors)
-    
+
     # Display results
     print("\n" + "="*60)
     print("CALIBRATION RESULTS")
     print("="*60)
     print(f"Image size: {w} x {h} pixels")
     print(f"Reprojection error (RMS): {rms_reproj_error:.4f} pixels")
-    print(f"Mean per-corner error:    {mean_per_corner:.4f} pixels (diagnostic)")
     print("Calibration quality: ", end="")
-    
-    if rms_reproj_error < 0.3:
+
+    # Worksheet: epsilon_rms "should be below 0.5 px; above 1.0 px, recapture."
+    if rms_reproj_error <= CAM_CALIB_RMS_GOOD_TARGET_PX:
         print("EXCELLENT ✓")
-    elif rms_reproj_error < 0.5:
-        print("GOOD ✓")
-    elif rms_reproj_error < 1.0:
-        print("ACCEPTABLE")
+    elif rms_reproj_error < CAM_CALIB_RMS_RECAPTURE_PX:
+        print("ACCEPTABLE (target is below "
+              f"{CAM_CALIB_RMS_GOOD_TARGET_PX:g} px)")
     else:
-        print("POOR - Consider recapturing images")
+        print(f"POOR - consider recapturing with more varied views "
+              f"(above {CAM_CALIB_RMS_RECAPTURE_PX:g} px)")
     
     print("\nCamera Matrix (intrinsic parameters):")
     print("┌" + "─"*50 + "┐")
@@ -163,7 +151,6 @@ def calibrate_camera(images_path='*.jpg', chessboard_size=(10, 7), square_size_m
              camera_matrix=camera_matrix,
              dist_coeffs=dist_coeffs,
              reprojection_error_rms=rms_reproj_error,
-             reprojection_error_mean=mean_per_corner,
              image_size=(w, h),
              chessboard_size=chessboard_size,
              square_size_mm=square_size_mm)
@@ -174,8 +161,7 @@ def calibrate_camera(images_path='*.jpg', chessboard_size=(10, 7), square_size_m
         f.write("CAMERA CALIBRATION PARAMETERS\n")
         f.write("="*40 + "\n\n")
         f.write(f"Image size: {w} x {h}\n")
-        f.write(f"Reprojection error (RMS): {rms_reproj_error:.4f} pixels\n")
-        f.write(f"Mean per-corner error:    {mean_per_corner:.4f} pixels\n\n")
+        f.write(f"Reprojection error (RMS): {rms_reproj_error:.4f} pixels\n\n")
         f.write("Camera Matrix:\n")
         f.write(str(camera_matrix) + "\n\n")
         f.write("Distortion Coefficients:\n")
