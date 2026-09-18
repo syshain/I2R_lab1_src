@@ -22,6 +22,8 @@ Key transforms:
 - `T_6_C` : end-effector → camera (the unknown solved by hand-eye calibration).
 - `T_0_W = T_0_6 @ T_6_C @ T_C_W` : reconstructed artifact position in the base frame; a correct calibration makes this constant across poses.
 
+**Formulation: eye-to-hand.** The wrist camera observes a *static* bench artifact, so the loop closes as `T_0_W = T_0_6(i) @ X @ T_C_W(i)` with `X = T_6_C` constant. This is the **eye-to-hand** problem (not eye-in-hand). The solver exploits the conjugation relation `A_i = X·B_p,i·X⁻¹`, where `A_i` is the base-frame relative motion between consecutive poses and `B_p,i` the camera-frame relative motion — rotation solved by least squares on stacked rotvecs, translation by a linear system. See `solve_eye_to_hand()` in `get_transform.py`.
+
 Two physical artifacts are used:
 - **Chessboard** — printed checker pattern for camera intrinsics (`camera_calibration.py`).
 - **ArUco artifact** — rigid plate carrying ArUco markers for hand-eye calibration (`transformation_calibration.py`).
@@ -60,8 +62,8 @@ The stages run in order; each reads the previous stage's output from `data/` and
 | `fk_lite6.py` | Forward kinematics skeleton (student fills in DH params + link transform). Returns `T_0_6` from joint angles. | *(none — library module)* |
 | `robot_io.py` | Thin xArm SDK wrapper: connect, read joints, move, home. | *(none — library module)* |
 | `transformation_calibration.py` | Live ArUco-artifact detection loop; records `(T_0_6, T_C_W)` pose pairs (SPACE to capture, q to save, ESC to abort). | `calibration_data.npy` |
-| `get_transform.py` | Direct hand-eye solve: tests all 5 OpenCV methods on the full dataset, scores by artifact-position consistency, keeps the best `T_6_C`. Also exposes `resolve_T_0_6()` shared by other scripts. | `T_6_C_normal.npy`, `T_6_C_normal.txt` |
-| `ransac_calibration.py` | Robust hand-eye solve: RANSAC sampling, outlier rejection, multi-method `calibrateHandEye`, baseline comparison (all poses, no rejection), nonlinear least-squares refinement, plotting. | `T_6_C_ransac.npy`, `T_6_C_ransac.txt`, `ransac_calibration_results.txt` |
+| `get_transform.py` | Direct **eye-to-hand** solve via a self-contained `AX = X·BX⁻¹` solver (`solve_eye_to_hand`) on the full dataset, scored by artifact-position consistency (`s_max` = max per-axis std). No `cv2.calibrateHandEye` dependency. Also exposes `resolve_T_0_6()` shared by other scripts. | `T_6_C_normal.npy`, `T_6_C_normal.txt` |
+| `ransac_calibration.py` | Robust **eye-to-hand** solve: RANSAC sampling (min subset 4), outlier rejection using the same shared solver, baseline comparison (all poses, no rejection), nonlinear least-squares refinement, plotting. | `T_6_C_ransac.npy`, `T_6_C_ransac.txt`, `ransac_calibration_results.txt` |
 | `validate_calibration.py` | Live keygated validation at a relocated artifact; loads both `T_6_C` results, reconstructs artifact position with each, prints + writes side-by-side comparison. | `validation_data.npy`, `validation_results.txt` |
 
 `ransac_calibration.py` and `get_transform.py` are two independent routes to the same target (`T_6_C`) and both consume `calibration_data.npy`. `validate_calibration.py` evaluates both on the same fresh set of poses so the comparison is apples-to-apples.
