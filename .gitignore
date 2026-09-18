@@ -3,6 +3,7 @@
 *.venv
 *.png
 *.jpg
+*.zip
 __*__
 reference/
 data/*.txt
