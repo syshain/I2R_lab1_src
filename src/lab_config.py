@@ -107,5 +107,5 @@ S_MAX_ACCEPTABLE_MM = 20.0    # < this  -> ACCEPTABLE, else POOR
 # ---------------------------------------------------------------------------
 
 # How many poses to collect when validating against a relocated artifact.
-VALIDATION_MIN_POSES = 8
-VALIDATION_MAX_POSES = 10
+VALIDATION_MIN_POSES = 6
+VALIDATION_MAX_POSES = 20
