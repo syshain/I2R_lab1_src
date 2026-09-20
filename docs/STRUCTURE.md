@@ -51,7 +51,7 @@ The stages run in order; each reads the previous stage's output from `data/` and
 | Script | Owns | Produces in `data/` |
 |--------|------|---------------------|
 | `image_capture.py` | Grabs chessboard frames from the USB camera on demand (SPACE to capture, ESC to finish). | `calib_NNN.jpg` |
-| `camera_calibration.py` | Intrinsics + distortion from the chessboard images (`findChessboardCorners` + `calibrateCamera`). | `camera_matrix.npy`, `dist_coeffs.npy`, `calibration_results.npz`, `calibration_parameters.txt` |
+| `camera_calibration.py` | Intrinsics + distortion from the chessboard images (`findChessboardCorners` + `calibrateCamera`); fits `k1,k2,p1,p2` with `k3` pinned at zero (`CALIB_FIX_K3`) — the fitted k3 carries no information (< 0.001 px RMS change when dropped). | `camera_matrix.npy`, `dist_coeffs.npy`, `calibration_results.npz`, `calibration_parameters.txt` |
 | `lab_config.py` | Single source of truth for every tunable: hardware settings (robot IP, camera index), chessboard geometry, ArUco dictionary/markers, and **all quality thresholds** — camera-intrinsics RMS-reprojection bands (`CAM_CALIB_RMS_*`), the hand-eye `s_max` grading bands (`S_MAX_*`), the ArUco capture reject limit, and RANSAC iterations/inlier tightness. Override hardware values via env vars on the bench. | *(none — config module)* |
 | `fk_lite6.py` | Forward kinematics skeleton (student fills in DH params + link transform). Returns `T_0_6` from joint angles. | *(none — library module)* |
 | `robot_io.py` | Thin xArm SDK wrapper: connect, read joints, move, home. | *(none — library module)* |

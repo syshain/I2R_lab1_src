@@ -105,8 +105,11 @@ def calibrate_camera(images_path='*.jpg', chessboard_size=(10, 7), square_size_m
     img = cv.imread(good_images[0])
     h, w = img.shape[:2]
     
+    # Fit k1, k2, p1, p2 only; k3 pinned at zero (adds nothing, see check_k3_zero.py).
+    dist_seed = np.zeros((5, 1), dtype=np.float64)
     rms_reproj_error, camera_matrix, dist_coeffs, rvecs, tvecs = cv.calibrateCamera(
-        objpoints, imgpoints, (w, h), None, None
+        objpoints, imgpoints, (w, h), None, dist_seed,
+        flags=cv.CALIB_FIX_K3
     )
 
     # Display results
