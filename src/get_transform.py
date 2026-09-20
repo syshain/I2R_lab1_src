@@ -1,7 +1,7 @@
-"""Eye-to-hand calibration via FK-derived robot poses.
+"""Hand-eye calibration via FK-derived robot poses.
 
 Setup: a camera is mounted on the robot wrist and observes a STATIC ArUco board
-fixed to the bench. This is an EYE-TO-HAND problem: the camera moves with the
+fixed to the bench. This is an EYE-IN-HAND setup: the camera moves with the
 end-effector while the observed target stays fixed in the base frame.
 
 Notation:
@@ -11,8 +11,9 @@ Notation:
 The unknown is T_6_C (end-effector -> camera). The loop closure per pose i is
     T_0_W = T_0_6(i) @ T_6_C @ T_C_W(i)
 where T_0_W (board position in base frame) is constant across all poses. We solve
-for T_6_C with a self-contained conjugation-based solver (see solve_eye_to_hand);
-a correct fit makes the reconstructed T_0_W collapse onto a single point.
+for T_6_C with cv2.calibrateHandEye using the Park method (AX = XB form, see
+solve_hand_eye_park); a correct fit makes the reconstructed T_0_W collapse onto
+a single point.
 
 For each pose the base->EE transform is taken from the stored T_0_6 (computed by
 forward kinematics at capture time), falling back to recomputing FK from the
@@ -25,11 +26,16 @@ error norm are printed so you can see exactly where any remaining scatter comes
 from.
 """
 
+import cv2
 import numpy as np
 from pathlib import Path
 from scipy.spatial.transform import Rotation as R
 
-from fk_lite6 import fk_lite6
+try:
+    from fk_lite6 import fk_lite6
+except (ImportError, SyntaxError):
+    # FK skeleton not yet implemented; stored T_0_6 still works fine.
+    fk_lite6 = None
 from lab_config import (
     S_MAX_EXCELLENT_MM, S_MAX_GOOD_MM, S_MAX_ACCEPTABLE_MM,
 )
@@ -40,6 +46,8 @@ _DATA_DIR = _SCRIPT_DIR.parent / 'data'
 
 def fk_pose(joints_deg):
     """Base->EE transform (mm) from 6 joint angles in degrees via Craig-DH FK."""
+    if fk_lite6 is None:
+        raise RuntimeError("fk_lite6 not implemented; pose has no stored T_0_6")
     return fk_lite6(np.deg2rad(np.asarray(joints_deg, dtype=np.float64)))
 
 
@@ -69,57 +77,45 @@ def resolve_T_0_6(d):
     raise KeyError(f"pose has no usable robot pose (keys: {list(d.keys())})")
 
 
-def solve_eye_to_hand(T_0_6_list, T_C_W_list):
-    """
-    Solve T_6_C for an EYE-TO-HAND setup (wrist camera observing a static artifact).
+def solve_hand_eye_park(T_0_6_list, T_C_W_list):
+    """Solve T_6_C (end-effector -> camera) with cv2.calibrateHandEye, Park method.
+
+    Our loop closure T_0_W = T_0_6 @ T_6_C @ T_C_W is exactly the AX = XB form
+    that OpenCV solves, with A := inv(T_0_6_i) @ T_0_6_j (relative base motion,
+    i.e. gripper->base) and B := T_C_W_i @ inv(T_C_W_j) (relative camera-side
+    pose, i.e. target->camera). So we map:
+        R_gripper2base <- rotation of T_0_6,  t_gripper2base <- translation of T_0_6
+        R_target2cam   <- rotation of T_C_W,  t_target2cam   <- translation of T_C_W
+    and the returned (R_cam2gripper, t_cam2gripper) IS our T_6_C.
+
+    Returns (T_6_C, ok). Fails gracefully on degenerate subsets (fewer than 3
+    poses or singular rotation pairs), which RANSAC must tolerate.
     """
     n = len(T_0_6_list)
     if n < 3:
         return None, False
 
-    # --- Rotation part -------------------------------------------------------
-    RA_cols = []
-    RB_cols = []
-    for i in range(n - 1):
-        A = np.linalg.inv(T_0_6_list[i]) @ T_0_6_list[i + 1]
-        Bp = T_C_W_list[i] @ np.linalg.inv(T_C_W_list[i + 1])
-        RA_cols.append(R.from_matrix(A[:3, :3]).as_rotvec())
-        RB_cols.append(R.from_matrix(Bp[:3, :3]).as_rotvec())
-
-    RA = np.array(RA_cols).T   # 3 x (n-1)
-    RB = np.array(RB_cols).T   # 3 x (n-1)
-
-    Rx = RA @ np.linalg.pinv(RB)
-    U, S, Vt = np.linalg.svd(Rx)
-    # Rank deficiency means the sampled rotations don't span enough directions
-    # to determine the transform; flag it so callers can retry with other poses.
-    if min(S) < 1e-8:
-        return None, False
-    Rx = U @ Vt
-    if np.linalg.det(Rx) < 0:
-        U[:, -1] *= -1
-        Rx = U @ Vt
-
-    # --- Translation part ----------------------------------------------------
-    M_rows = []
-    r_vecs = []
-    for i in range(n - 1):
-        A = np.linalg.inv(T_0_6_list[i]) @ T_0_6_list[i + 1]
-        Bp = T_C_W_list[i] @ np.linalg.inv(T_C_W_list[i + 1])
-        coef = np.eye(3) - Rx @ Bp[:3, :3] @ Rx.T
-        rhs = A[:3, 3] - Rx @ Bp[:3, 3]
-        M_rows.append(coef)
-        r_vecs.append(rhs.reshape(-1))
+    Rs_g2b = [np.asarray(T[:3, :3], dtype=np.float64) for T in T_0_6_list]
+    ts_g2b = [np.asarray(T[:3, 3], dtype=np.float64).reshape(3) for T in T_0_6_list]
+    Rs_t2c = [np.asarray(T[:3, :3], dtype=np.float64) for T in T_C_W_list]
+    ts_t2c = [np.asarray(T[:3, 3], dtype=np.float64).reshape(3) for T in T_C_W_list]
 
     try:
-        x, *_ = np.linalg.lstsq(np.vstack(M_rows), np.concatenate(r_vecs), rcond=None)
-    except np.linalg.LinAlgError:
+        R_c2g, t_c2g = cv2.calibrateHandEye(
+            Rs_g2b, ts_g2b, Rs_t2c, ts_t2c,
+            method=cv2.CALIB_HAND_EYE_PARK,
+        )
+    except cv2.error:
         return None, False
 
-    T_6_C = np.eye(4)
-    T_6_C[:3, :3] = Rx
-    T_6_C[:3, 3] = x
+    T_6_C = np.eye(4, dtype=np.float64)
+    T_6_C[:3, :3] = R_c2g
+    T_6_C[:3, 3] = np.asarray(t_c2g, dtype=np.float64).reshape(3)
     return T_6_C, True
+
+
+# Backwards-compatible alias: older scripts import this name.
+solve_eye_to_hand = solve_hand_eye_park
 
 
 def evaluate_consistency(T_6_C, data):
@@ -153,7 +149,7 @@ def save_result(T_6_C, filename_npy='T_6_C_normal.npy', filename_txt='T_6_C_norm
     np.save(str(_DATA_DIR / filename_npy), T_6_C)
 
     with open(str(_DATA_DIR / filename_txt), 'w') as f:
-        f.write("Eye-to-Hand Calibration Result: T_6_C (Direct Solver)\n")
+        f.write("Hand-Eye Calibration Result: T_6_C (cv2 Park method)\n")
         f.write("=" * 60 + "\n\n")
         f.write("4x4 Transformation Matrix:\n")
         for row in T_6_C:
@@ -200,15 +196,16 @@ if __name__ == "__main__":
               f"cam→art=({t_cw[0]:6.1f},{t_cw[1]:6.1f},{t_cw[2]:6.1f}) mm  "
               f"reproj={rep:5.2f}px{jtag}")
 
-    # Solve T_6_C with the self-contained eye-to-hand solver over all poses.
+    # Solve T_6_C with cv2.calibrateHandEye (Park) over all poses.
     T_0_6_list = [resolve_T_0_6(d)[0] for d in valid_data]
     T_C_W_list = [np.asarray(d['T_C_W'], dtype=np.float64) for d in valid_data]
 
     print("\n" + "=" * 90)
-    print("EYE-TO-HAND SOLVE (static bench artifact, wrist camera)")
+    print("HAND-EYE SOLVE -- cv2.calibrateHandEye, PARK method")
+    print("(eye-in-hand: static bench artifact, wrist camera)")
     print("=" * 90)
 
-    T_6_C, ok = solve_eye_to_hand(T_0_6_list, T_C_W_list)
+    T_6_C, ok = solve_hand_eye_park(T_0_6_list, T_C_W_list)
     if not ok or T_6_C is None:
         print("\nCalibration failed: pose set too small or degenerate "
               "(insufficient rotational variety). Re-capture with broader motion.")

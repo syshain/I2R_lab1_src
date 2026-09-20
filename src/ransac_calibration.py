@@ -1,6 +1,6 @@
-"""Robust eye-to-hand calibration with outlier rejection (RANSAC).
+"""Robust hand-eye calibration with outlier rejection (RANSAC).
 
-Setup: wrist-mounted camera observing a STATIC bench artifact (eye-to-hand). The
+Setup: wrist-mounted camera observing a STATIC bench artifact (eye-in-hand). The
 unknown is T_6_C (end-effector -> camera); a correct fit makes the reconstructed
 artifact position in the base frame collapse to a single point.
 
@@ -16,8 +16,8 @@ least squares, plots the result, and saves:
     ../data/ransac_calibration_results.txt  # full report: params + consistency
                                             # + baseline comparison + refinement
 
-Each subset hypothesis is solved with the shared self-contained eye-to-hand
-solver (get_transform.solve_eye_to_hand), which uses the conjugation form A = X Bp X^-1
+Each subset hypothesis is solved with cv2.calibrateHandEye using the Park method
+(get_transform.solve_hand_eye_park), which solves the AX = XB form directly.
 """
 
 import numpy as np
@@ -30,7 +30,7 @@ from lab_config import (
     RANSAC_ITERATIONS, RANSAC_INLIER_THRESHOLD_MM, RANSAC_SEED,
     S_MAX_EXCELLENT_MM, S_MAX_GOOD_MM, S_MAX_ACCEPTABLE_MM,
 )
-from get_transform import resolve_T_0_6, solve_eye_to_hand
+from get_transform import resolve_T_0_6, solve_hand_eye_park
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _DATA_DIR = _SCRIPT_DIR.parent / 'data'
@@ -42,28 +42,25 @@ class RobustHandEyeCalibrator:
         self.T_6_C = None
         self.inlier_mask = None
 
-    # The eye-to-hand solver needs at least 4 poses: with only 3 poses there are
-    # just 2 relative-rotation pairs, which cannot span 3D rotation space, so the
-    # rotation stack is rank-deficient and the solve is rejected. Four poses give
-    # 3 independent pairs -- the smallest well-posed set. Each RANSAC hypothesis
-    # is built from a random 4-pose subset; sampling these small subsets and
-    # scoring them globally against every pose is what makes this robust to
-    # outliers.
+    # The Park solver needs at least 3 poses (3 relative-rotation pairs to span
+    # 3D rotation space); we sample 4 per hypothesis for margin. Sampling small
+    # subsets and scoring them globally against every pose is what makes this
+    # robust to outliers.
     MIN_SAMPLE = 4
 
     def _solve_on_subset(self, subset, method_flag=None):
-        """Solve T_6_C from a list of poses with the shared eye-to-hand solver.
+        """Solve T_6_C from a list of poses via cv2.calibrateHandEye (Park).
 
         Returns (T_6_C, ok). Fails gracefully when the subset is degenerate
-        (rank-deficient rotation stack), which is exactly what RANSAC must
-        tolerate.
+        (singular rotation pairs / too few poses), which is exactly what RANSAC
+        must tolerate.
         """
         if len(subset) < self.MIN_SAMPLE:
             return None, False
 
         T_0_6_list = [resolve_T_0_6(d)[0] for d in subset]
         T_C_W_list = [np.asarray(d['T_C_W'], dtype=np.float64) for d in subset]
-        return solve_eye_to_hand(T_0_6_list, T_C_W_list)
+        return solve_hand_eye_park(T_0_6_list, T_C_W_list)
 
     def evaluate_consistency(self, T_6_C, data):
         """Mean std-dev of reconstructed artifact positions across poses."""
@@ -130,7 +127,7 @@ class RobustHandEyeCalibrator:
     def baseline_calibrate(self):
         """Plain baseline: solve T_6_C on ALL poses, no RANSAC, no refinement.
 
-        Uses the shared closed-form eye-to-hand solver on the full dataset and
+        Uses the shared cv2 Park-method solver on the full dataset and
         leaves the result untouched. This is the plain direct method the RANSAC
         route (closed form + outlier rejection + nonlinear refinement) is
         compared against. Returns (T_6_C, scores_dict).
