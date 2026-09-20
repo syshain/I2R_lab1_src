@@ -1,9 +1,7 @@
 """Thin wrapper around the xArm SDK for the Lite 6.
 
 Keeps every hardware call in one place so the calibration scripts never touch
-the SDK directly. Ported from Lab 3's robot_io.py, made self-contained: the
-joint-limit table is defined here (rather than imported from ik_solver) and the
-controller IP comes from lab_config so it stays overridable via ROBOT_IP.
+the SDK directly. 
 
 Units: joint angles are returned as (6,) numpy arrays in RADIANS; cartesian
 positions as (6,) vectors [x, y, z, roll, pitch, yaw] with position in MM and

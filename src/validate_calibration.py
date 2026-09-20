@@ -1,6 +1,6 @@
 """Validate hand-eye calibrations with a RELOCATED artifact (live, keygated).
 
-Worksheet notation:
+Notation:
     base frame   : 0          end-effector frame : 6
     camera frame : C          ArUco artifact     : W
 
@@ -13,12 +13,7 @@ Workflow:
   2. Physically MOVE the ArUco artifact to a different spot on the table and
      hold it stationary there.
   3. Run this script. Move the arm through 8-10 different poses while keeping
-     the artifact still; press SPACE to record each one. Press 'q' to finish.
-
-Why relocate? Validating against the same artifact location used for calibration
-can let a systematic error in T_6_C partially cancel out. A fresh location means
-any bias shows up as scatter across the new poses, so the reported RMS is an
-honest measure of whether the transform generalises.
+      the artifact still; press SPACE to record each one. Press ESC to finish.
 
 For every captured pose we reconstruct where the artifact sits in the base frame:
     T_0_W = T_0_6 @ T_6_C @ T_C_W
@@ -203,7 +198,7 @@ def main():
 
     print("\nControls:")
     print(f"  SPACE - Capture current pose (need {MIN_POSES}-{MAX_POSES})")
-    print("  'q'   - Finish & compute RMS spread")
+    print("  ESC   - Finish & compute RMS spread")
     print("=" * 60 + "\n")
 
     pose_id = 1
@@ -217,19 +212,28 @@ def main():
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         corners, ids, _ = det.detector.detectMarkers(gray)
         frame = det.draw_detection(frame, rvec, tvec, ids, corners, success)
+        frame = cv2.resize(frame, None, fx=0.5, fy=0.5)
 
         n = len(det.calibration_data)
-        cv2.putText(frame, f"Validation poses: {n}/{MAX_POSES}",
-                    (10, frame.shape[0] - 20),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 200, 0), 2)
+        # The shared detector overlay prints X/Y/Z artifact coordinates below
+        # the "Artifact Detected" line; they are not needed here, so blank them
+        # out and put the pose count + key hints in their place instead.
+        if success:
+            cv2.rectangle(frame, (0, 45), (160, 70), (0, 0, 0), -1)
+        cv2.putText(frame, f"Poses captured: {n}/{MAX_POSES}",
+                    (10, 75),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 140, 255), 2)
+        cv2.putText(frame, "SPACE: capture    ESC: finish & save",
+                    (10, 105),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
         cv2.imshow('Calibration Validation', frame)
 
         key = cv2.waitKey(1) & 0xFF
-        if key == ord('q'):
+        if key == 27:  # ESC
             break
         elif key == 32:  # SPACE
             if n >= MAX_POSES:
-                print(f"Already at {MAX_POSES}; press 'q' to finish.")
+                print(f"Already at {MAX_POSES}; press ESC to finish.")
             elif not success:
                 print("Artifact not detected - try again.")
             else:
@@ -299,9 +303,6 @@ def main():
 
     # Persist everything to validation_results.txt.
     write_validation_report(transforms, results)
-
-    print("\nTip: large spread usually means the artifact moved during capture,")
-    print("some frames were mis-detected, or T_6_C itself is inaccurate.")
 
 
 if __name__ == "__main__":

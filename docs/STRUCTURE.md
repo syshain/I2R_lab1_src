@@ -56,7 +56,7 @@ The stages run in order; each reads the previous stage's output from `data/` and
 | `fk_lite6.py` | Forward kinematics skeleton (student fills in DH params + link transform). Returns `T_0_6` from joint angles. | *(none — library module)* |
 | `robot_io.py` | Thin xArm SDK wrapper: connect, read joints, move, home. | *(none — library module)* |
 | `transformation_calibration.py` | Live ArUco-artifact detection loop; records `(T_0_6, T_C_W)` pose pairs (SPACE to capture, q to save, ESC to abort). | `calibration_data.npy` |
-| `get_transform.py` | Direct **eye-to-hand** solve via a self-contained `AX = X·BX⁻¹` solver (`solve_eye_to_hand`) on the full dataset, scored by artifact-position consistency (`s_max` = max per-axis std). No `cv2.calibrateHandEye` dependency. Also exposes `resolve_T_0_6()` shared by other scripts. | `T_6_C_normal.npy`, `T_6_C_normal.txt` |
+| `get_transform.py` | Direct **eye-to-hand** solve via a self-contained `A = X·BX⁻¹` solver (`solve_eye_to_hand`) on the full dataset, scored by artifact-position consistency (`s_max` = max per-axis std). Also exposes `resolve_T_0_6()` shared by other scripts. | `T_6_C_normal.npy`, `T_6_C_normal.txt` |
 | `ransac_calibration.py` | Robust **eye-to-hand** solve: RANSAC sampling (min subset 4) with the shared closed-form solver, inlier assignment on the raw winner, then nonlinear least-squares refinement on the inlier subset; compared against a plain baseline (closed form on all poses, no rejection, no refinement). Plots and reports both results. | `T_6_C_ransac.npy`, `T_6_C_ransac.txt`, `ransac_calibration_results.txt` |
 | `validate_calibration.py` | Live keygated validation at a relocated artifact; loads both `T_6_C` results, reconstructs artifact position with each, prints + writes side-by-side comparison. | `validation_data.npy`, `validation_results.txt` |
 
@@ -92,4 +92,4 @@ python.exe src\ransac_calibration.py
 python.exe src\validate_calibration.py
 ```
 
-Requires: Python 3.12+, OpenCV 4.x, NumPy, SciPy, Matplotlib, xArm Python SDK, and a reachable UFACTORY Lite 6 at `192.168.1.153`.
+Requires: Python 3.12+, OpenCV 4.x, NumPy, SciPy, Matplotlib, xArm Python SDK, and a reachable UFACTORY Lite 6.

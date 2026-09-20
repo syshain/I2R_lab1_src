@@ -4,7 +4,7 @@ Setup: a camera is mounted on the robot wrist and observes a STATIC ArUco board
 fixed to the bench. This is an EYE-TO-HAND problem: the camera moves with the
 end-effector while the observed target stays fixed in the base frame.
 
-Worksheet notation:
+Notation:
     base frame   : 0          end-effector frame : 6
     camera frame : C          ArUco artifact     : W
 
@@ -18,10 +18,6 @@ For each pose the base->EE transform is taken from the stored T_0_6 (computed by
 forward kinematics at capture time), falling back to recomputing FK from the
 stored joint angles, then to the controller's cartesian get_position() for legacy
 data that has neither.
-
-NOTE: this deliberately does NOT use cv2.calibrateHandEye -- that API implements
-the eye-IN-hand AX=BX form (target moves with the gripper), which is the wrong
-model here, and it is absent from the installed OpenCV build anyway.
 
 Verbose output: every captured pose is echoed up front, and the per-pose
 artifact-position residual (deviation of T_0_W from its mean) plus an aggregate
@@ -74,34 +70,8 @@ def resolve_T_0_6(d):
 
 
 def solve_eye_to_hand(T_0_6_list, T_C_W_list):
-    """Solve T_6_C for an EYE-TO-HAND setup (wrist camera observing a static artifact).
-
-    Geometry: the camera is mounted on the end-effector and observes a fixed
-    ArUco board. The board's position in the base frame, T_0_W, is CONSTANT. The
-    loop closure per pose i is
-
-        T_0_W = T_0_6(i) @ X @ T_C_W(i),      X = T_6_C  (unknown)
-
-    Taking the ratio of two consecutive poses eliminates the constant T_0_W:
-
-        A_i = inv(T_0_6(i)) @ T_0_6(i+1)   ==   X @ Bp_i @ inv(X)
-        Bp_i = T_C_W(i) @ inv(T_C_W(i+1))
-
-    This is a CONJUGATION relation (A = X Bp X^-1), not the classic eye-in-hand
-    AX=BX form -- using the latter on this geometry is what produced the earlier
-    "POOR" / s_max ~ 171 mm result.
-
-    Rotation: conjugation preserves rotation angle but rotates the axis by X_r,
-    so rotvec(A_i) = X_r @ rotvec(Bp_i). Stacking all pairs gives the least-squares
-    problem X_r @ RB = RA, solved as X_r = RA @ pinv(RB) and re-orthonormalized.
-
-    Translation: expanding A_t = X_r @ Rp_bp @ X_r^T ... yields the linear system
-        (I - X_r @ Rp_bp @ X_r^T) @ x = a_t - X_r @ bp_t
-    stacked over all pairs and solved by least squares.
-
-    Validated against synthetic ground truth (exact recovery, recon spread -> 0)
-    before use. Returns (T_6_C, ok); ok is False when the input set is too small
-    or degenerate (rank-deficient rotation stack), which RANSAC must tolerate.
+    """
+    Solve T_6_C for an EYE-TO-HAND setup (wrist camera observing a static artifact).
     """
     n = len(T_0_6_list)
     if n < 3:

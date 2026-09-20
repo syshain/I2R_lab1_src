@@ -4,7 +4,7 @@ Setup: wrist-mounted camera observing a STATIC bench artifact (eye-to-hand). The
 unknown is T_6_C (end-effector -> camera); a correct fit makes the reconstructed
 artifact position in the base frame collapse to a single point.
 
-Worksheet notation:
+Notation:
     base frame   : 0          end-effector frame : 6
     camera frame : C          ArUco artifact     : W
 
@@ -17,9 +17,7 @@ least squares, plots the result, and saves:
                                             # + baseline comparison + refinement
 
 Each subset hypothesis is solved with the shared self-contained eye-to-hand
-solver (get_transform.solve_eye_to_hand), which uses the conjugation form A = X
-Bp X^-1 appropriate to this geometry -- NOT the eye-in-hand AX=BX form that
-cv2.calibrateHandEye implements (and which is absent from the installed build).
+solver (get_transform.solve_eye_to_hand), which uses the conjugation form A = X Bp X^-1
 """
 
 import numpy as np
@@ -56,10 +54,6 @@ class RobustHandEyeCalibrator:
     def _solve_on_subset(self, subset, method_flag=None):
         """Solve T_6_C from a list of poses with the shared eye-to-hand solver.
 
-        `method_flag` is accepted for signature compatibility with older call
-        sites but ignored -- there is a single correct formulation for this
-        geometry, not a menu of competing methods.
-
         Returns (T_6_C, ok). Fails gracefully when the subset is degenerate
         (rank-deficient rotation stack), which is exactly what RANSAC must
         tolerate.
@@ -84,7 +78,7 @@ class RobustHandEyeCalibrator:
 
     def ransac_calibrate(self, n_iterations=2000, inlier_threshold_mm=10.0,
                          seed=None):
-        """Genuine RANSAC over the captured pose pairs.
+        """RANSAC over the captured pose pairs.
 
         Repeatedly samples a minimal subset of poses, solves a candidate T_6_C,
         and scores it by how tightly the reconstructed artifact position clusters
@@ -212,11 +206,8 @@ class RobustHandEyeCalibrator:
         return self.T_6_C_refined
 
     def _artifact_positions(self, poses, T_6_C):
-        """Reconstructed artifact positions in the robot base frame.
+        """Reconstructed artifact positions in the robot base frame."""
 
-        Always returns a 2-D (N, 3) array so callers can vstack / index it
-        safely even when `poses` is empty (an empty list would otherwise yield
-        a 1-D (0,) array and break np.vstack)."""
         pts = [(resolve_T_0_6(d)[0] @ T_6_C @ d['T_C_W'])[:3, 3] for d in poses]
         return np.asarray(pts, dtype=float).reshape(-1, 3)
 

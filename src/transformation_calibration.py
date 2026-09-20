@@ -17,8 +17,7 @@ physical 40 mm markers.
 
 Controls:
     SPACE - capture the current pose
-    'q'   - quit and save what has been captured
-    ESC   - abort without saving
+    ESC   - quit and save what has been captured
 
 The collected pairs are saved to ../data/calibration_data.npy, which is the
 input consumed by get_transform.py (direct solve) and ransac_calibration.py
@@ -305,8 +304,7 @@ class ArucoArtifactDetector:
         print("="*60)
         print("Controls:")
         print("  SPACE - Capture current pose (robot + artifact)")
-        print("  'q'   - Quit and save captured data")
-        print("  ESC   - Abort without saving")
+        print("  ESC   - Quit and save captured data")
         print("="*60 + "\n")
 
         pose_id = 1
@@ -333,10 +331,7 @@ class ArucoArtifactDetector:
 
             key = cv2.waitKey(1) & 0xFF
 
-            if key == ord('q'):
-                break
-            elif key == 27:  # ESC
-                print("Aborted without saving.")
+            if key == 27:  # ESC - quit and save
                 break
             elif key == 32:  # SPACE
                 if mode == 'calibrate':
