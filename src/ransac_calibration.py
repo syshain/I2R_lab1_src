@@ -117,17 +117,8 @@ class RobustHandEyeCalibrator:
             print("RANSAC produced no valid hypothesis.")
             return None
 
-        # The closed-form hand-eye solvers are weak initializers on this
-        # geometry: their RAW solutions sit tens of mm off even when the data
-        # is good, but a short nonlinear polish collapses them to the true
-        # answer. Refine the winner FIRST, then assign inliers against the
-        # polished transform so the gate sees poses where they actually belong.
-        refined = self.refine_calibration(initial_T_6_C=best_T, use_inliers=False)
-        if refined is not None:
-            best_T = refined
-            best_score = self.evaluate_consistency(best_T, self.calibration_data)
-
-        # Assign inliers against the (refined) winning hypothesis.
+        # Assign inliers against the raw winning hypothesis; the nonlinear
+        # refinement runs afterwards on the inlier subset (see STEP 3).
         positions = self._artifact_positions(self.calibration_data, best_T)
         center = np.median(positions, axis=0)
         dists = np.linalg.norm(positions - center, axis=1)
@@ -143,31 +134,26 @@ class RobustHandEyeCalibrator:
         return best_T
 
     def baseline_calibrate(self):
-        """Solve T_6_C on ALL poses (no RANSAC, no outlier rejection).
+        """Plain baseline: solve T_6_C on ALL poses, no RANSAC, no refinement.
 
-        Uses the single eye-to-hand solver on the full dataset, refines the
-        result, and returns (best_T, scores_dict) where scores_dict carries the
-        pre- and post-refinement consistency so the report can show how much the
-        polish helped. This is a fair comparison against RANSAC: same solver and
-        refinement, just without the subset-sampling / inlier-rejection step.
+        Uses the shared closed-form eye-to-hand solver on the full dataset and
+        leaves the result untouched. This is the plain direct method the RANSAC
+        route (closed form + outlier rejection + nonlinear refinement) is
+        compared against. Returns (T_6_C, scores_dict).
         """
         all_data = self.calibration_data
         n = len(all_data)
 
-        print(f"\n Solving on all {n} poses (no outlier rejection)...")
-        T_raw, ok = self._solve_on_subset(all_data)
-        if not ok or T_raw is None:
+        print(f"\n Solving on all {n} poses (no outlier rejection, no refinement)...")
+        T_6_C, ok = self._solve_on_subset(all_data)
+        if not ok or T_6_C is None:
             print("   Solver did not converge on the full dataset.")
             return None, {}
 
-        raw_score = self.evaluate_consistency(T_raw, all_data)
-        refined = self.refine_calibration(initial_T_6_C=T_raw, use_inliers=False)
-        final_T = refined if refined is not None else T_raw
-        final_score = self.evaluate_consistency(final_T, all_data)
-        print(f"   Baseline (all poses)  raw={raw_score:7.2f} mm  "
-              f"refined={final_score:7.2f} mm")
+        score = self.evaluate_consistency(T_6_C, all_data)
+        print(f"   Baseline (all poses, closed form only)  {score:7.2f} mm")
 
-        return final_T, {'Baseline (all)': final_score}
+        return T_6_C, {'Baseline (all)': score}
 
     def _inlier_subset(self, use_inliers=True):
         """Poses passing the RANSAC inlier test (or all poses if none set)."""
@@ -476,14 +462,15 @@ if __name__ == "__main__":
         print("\n" + "="*60)
         print("STEP 3: Nonlinear Refinement (on inlier subset)")
         print("="*60)
-        # Consistency of the raw RANSAC estimate on the inlier subset, captured
+        # Consistency of the RAW RANSAC estimate on the inlier subset, captured
         # BEFORE refinement so the report can show how much the polish helped.
         refine_before = None
         try:
             refine_before = calibrator.evaluate_consistency(T_6_C, inlier_data)
         except Exception:
             pass
-        T_6_C_refined = calibrator.refine_calibration(use_inliers=True)
+        T_6_C_refined = calibrator.refine_calibration(
+            initial_T_6_C=T_6_C, use_inliers=True)
 
         # refine_calibration can return None (e.g. no usable initial guess).
         # Fall back to the raw RANSAC estimate so downstream steps always get

@@ -245,10 +245,8 @@ if __name__ == "__main__":
         raise SystemExit
 
     cons = evaluate_consistency(T_6_C, valid_data)
-    best = {'method_name': 'eye-to-hand', 'T_6_C': T_6_C, **cons}
 
-    print(f"\n--- {best['method_name']} ---")
-    print(f"{'pose':>4} | artifact@base (mm)                       | resid(mm)")
+    print(f"\n{'pose':>4} | artifact@base (mm)                       | resid(mm)")
     print("-" * 68)
     for k, p in enumerate(cons['positions']):
         resid = float(np.linalg.norm(p - cons['mean']))
@@ -258,22 +256,17 @@ if __name__ == "__main__":
     print(f"std XYZ       : ({cons['std'][0]:.3f},{cons['std'][1]:.3f},{cons['std'][2]:.3f}) mm")
     print(f"RMS error norm: {cons['rms']:.3f} mm   max dev: {cons['max_dev']:.3f} mm")
 
-    T_6_C = best['T_6_C']
     euler_xyz = R.from_matrix(T_6_C[:3, :3]).as_euler('xyz', degrees=True)
 
     print("\n" + "=" * 90)
-    print("BEST RESULT")
+    print("CALIBRATION RESULTS")
     print("=" * 90)
-    print(f"Best HE method   : {best['method_name']}")
-    print(f"RMS error norm   : {best['rms']:.3f} mm")
-    print(f"Std XYZ [mm]     : {best['std']}")
-    print(f"Max dev [mm]     : {best['max_dev']:.3f}")
     print("\nT_6_C =")
     print(T_6_C)
     print(f"\nTranslation [mm]: {T_6_C[:3, 3]}")
     print(f"Euler xyz [deg]: {euler_xyz}")
 
-    s_max = float(np.max(best['std']))
+    s_max = float(np.max(cons['std']))
     if s_max < S_MAX_EXCELLENT_MM:
         print(f"\n✓ Calibration quality (s_max={s_max:.1f} mm): EXCELLENT")
     elif s_max < S_MAX_GOOD_MM:

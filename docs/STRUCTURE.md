@@ -57,10 +57,10 @@ The stages run in order; each reads the previous stage's output from `data/` and
 | `robot_io.py` | Thin xArm SDK wrapper: connect, read joints, move, home. | *(none — library module)* |
 | `transformation_calibration.py` | Live ArUco-artifact detection loop; records `(T_0_6, T_C_W)` pose pairs (SPACE to capture, q to save, ESC to abort). | `calibration_data.npy` |
 | `get_transform.py` | Direct **eye-to-hand** solve via a self-contained `AX = X·BX⁻¹` solver (`solve_eye_to_hand`) on the full dataset, scored by artifact-position consistency (`s_max` = max per-axis std). No `cv2.calibrateHandEye` dependency. Also exposes `resolve_T_0_6()` shared by other scripts. | `T_6_C_normal.npy`, `T_6_C_normal.txt` |
-| `ransac_calibration.py` | Robust **eye-to-hand** solve: RANSAC sampling (min subset 4), outlier rejection using the same shared solver, baseline comparison (all poses, no rejection), nonlinear least-squares refinement, plotting. | `T_6_C_ransac.npy`, `T_6_C_ransac.txt`, `ransac_calibration_results.txt` |
+| `ransac_calibration.py` | Robust **eye-to-hand** solve: RANSAC sampling (min subset 4) with the shared closed-form solver, inlier assignment on the raw winner, then nonlinear least-squares refinement on the inlier subset; compared against a plain baseline (closed form on all poses, no rejection, no refinement). Plots and reports both results. | `T_6_C_ransac.npy`, `T_6_C_ransac.txt`, `ransac_calibration_results.txt` |
 | `validate_calibration.py` | Live keygated validation at a relocated artifact; loads both `T_6_C` results, reconstructs artifact position with each, prints + writes side-by-side comparison. | `validation_data.npy`, `validation_results.txt` |
 
-`ransac_calibration.py` and `get_transform.py` are two independent routes to the same target (`T_6_C`) and both consume `calibration_data.npy`. `validate_calibration.py` evaluates both on the same fresh set of poses so the comparison is apples-to-apples.
+`ransac_calibration.py` and `get_transform.py` are two independent routes to the same target (`T_6_C`) and both consume `calibration_data.npy`: the former adds RANSAC outlier rejection plus a nonlinear polish on top of the shared closed-form solver, the latter runs that solver alone. `validate_calibration.py` evaluates both on the same fresh set of poses so the comparison is apples-to-apples.
 
 ## Units
 
