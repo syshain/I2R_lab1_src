@@ -8,9 +8,9 @@ For each pose we record:
     T_0_6 : base -> end-effector transform, computed by forward kinematics
             from the robot's joint angles (fk_lite6.fk_lite6).
     T_C_W : camera -> ArUco-artifact transform, recovered from the detected
-            marker corners + board_config.json geometry.
+            marker corners + aruco_config.json geometry.
 
-The artifact geometry is read from ../data/board_config.json (a 3-D polyhedron
+The artifact geometry is read from ../data/aruco_config.json (a 3-D polyhedron
 of markers), matching Labs 2 and 3. The corner coordinates are defined at a
 30 mm marker scale in the config and scaled up by ARUCO_ARTIFACT_SCALE to the
 physical 40 mm markers.
@@ -83,7 +83,7 @@ def get_robot_end_effector_pose(arm):
 
 
 class ArucoArtifactDetector:
-    """3-D ArUco artifact detector driven by board_config.json."""
+    """3-D ArUco artifact detector driven by aruco_config.json."""
 
     def __init__(self, camera_index=None):
         if camera_index is None:
@@ -104,8 +104,8 @@ class ArucoArtifactDetector:
         self.calibration_data = []
 
     def _build_artifact_model(self):
-        """Load marker corners from board_config.json, scale, and re-center."""
-        config_path = str(_DATA_DIR / 'board_config.json')
+        """Load marker corners from aruco_config.json, scale, and re-center."""
+        config_path = str(_DATA_DIR / 'aruco_config.json')
         with open(config_path, 'r') as f:
             cfg = json.load(f)
 
@@ -144,7 +144,7 @@ class ArucoArtifactDetector:
         print(f"✓ Camera {self.camera_index} opened")
         print(f"✓ OpenCV version: {cv2.__version__}")
         print(f"✓ Artifact: {len(self.marker_ids_list)} markers "
-              f"(IDs {self.marker_ids_list}) from board_config.json")
+              f"(IDs {self.marker_ids_list}) from aruco_config.json")
         return True
 
     def detect_artifact(self, frame):

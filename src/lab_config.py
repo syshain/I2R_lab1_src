@@ -36,7 +36,7 @@ CHESSBOARD_SIZE = (10, 7)
 
 # Physical side length of one chessboard square, in mm. Measure your printed
 # board with a ruler — this sets the real-world scale of the calibration.
-SQUARE_SIZE_MM = 10.0
+SQUARE_SIZE_MM = 15.0
 
 # Glob pattern (relative to the data dir) matching the captured chessboard images.
 CALIB_IMAGE_PATTERN = os.path.join("calib_*.jpg")
