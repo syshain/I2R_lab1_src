@@ -114,9 +114,6 @@ def solve_hand_eye_park(T_0_6_list, T_C_W_list):
     return T_6_C, True
 
 
-# Backwards-compatible alias: older scripts import this name.
-solve_eye_to_hand = solve_hand_eye_park
-
 
 def evaluate_consistency(T_6_C, data):
     """Reconstruct the artifact position in the base frame for every pose.

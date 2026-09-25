@@ -1,7 +1,7 @@
 """Forward kinematics for the UFACTORY Lite 6 (modified / Craig D-H).
 
 Skeleton: fill in _link_transform() so fk_lite6() chains the six links into a
-base->end-effector transform. 
+base->end-effector transform.
 
 Units:
     q      : joint angles [q1..q6] in RADIANS
@@ -69,5 +69,7 @@ def fk_lite6(q):
 
 if __name__ == "__main__":
     # Sanity check once implemented: at zero pose the EE should sit ~+154 mm along Z.
-    t0 = fk_lite6(np.zeros(6))[:3, 3]
+    q = np.array([0,0,0,0,0,0]) # Joint angles - in DEGREES. Change this when calling the function
+    q_rad = np.deg2rad(q)
+    t0 = fk_lite6(q_rad)[:3, 3]
     print("q=0 EE position (mm):", t0.round(3))

@@ -81,6 +81,7 @@ def _quality_grade(s_max_mm):
 def report(name, s):
     """Pretty-print one transform's validation stats (dict from _stats)."""
     mean, std = s['mean'], s['std']
+    s_max = float(np.max(std))
     print(f"\n{name}")
     print("-" * 50)
     print(f"  Poses evaluated : {s['n']}")
@@ -88,7 +89,15 @@ def report(name, s):
     print(f"  Std dev (xyz)   : ({std[0]:6.2f}, {std[1]:6.2f}, {std[2]:6.2f}) mm")
     print(f"  Max deviation   : {s['max_dev']:.2f} mm from mean")
     print(f"  RMS scatter     : {s['rms']:.2f} mm")
-    print(f"  Quality         : {_quality_grade(s['max_dev'])}")
+    if s_max < S_MAX_EXCELLENT_MM:
+        print(f"✓ Calibration quality (s_max={s_max:.1f} mm): EXCELLENT")
+    elif s_max < S_MAX_GOOD_MM:
+        print(f"✓ Calibration quality (s_max={s_max:.1f} mm): GOOD")
+    elif s_max < S_MAX_ACCEPTABLE_MM:
+        print(f"⚠ Calibration quality (s_max={s_max:.1f} mm): ACCEPTABLE")
+    else:
+        print(f"✗ Calibration quality (s_max={s_max:.1f} mm): POOR - "
+              f"consider re-capturing with more variation")
 
 
 def _load_transform(path_str, label):
@@ -140,6 +149,7 @@ def write_validation_report(transforms, results):
         # Per-transform detail.
         for name, s in results.items():
             mean, std = s['mean'], s['std']
+            s_max = float(np.max(std))
             f.write(f"--- {name.upper()} ---\n")
             if name in transforms:
                 f.write(_transform_lines(name, transforms[name]))
@@ -150,7 +160,15 @@ def write_validation_report(transforms, results):
                     f"{std[2]:6.2f}) mm\n")
             f.write(f"Max deviation   : {s['max_dev']:.2f} mm from mean\n")
             f.write(f"RMS scatter     : {s['rms']:.2f} mm\n")
-            f.write(f"Quality         : {_quality_grade(s['max_dev'])}\n\n")
+            if s_max < S_MAX_EXCELLENT_MM:
+                grade = "EXCELLENT"
+            elif s_max < S_MAX_GOOD_MM:
+                grade = "GOOD"
+            elif s_max < S_MAX_ACCEPTABLE_MM:
+                grade = "ACCEPTABLE"
+            else:
+                grade = "POOR"
+            f.write(f"Calibration quality (s_max={s_max:.1f} mm): {grade}\n\n")
 
         # Side-by-side comparison table.
         names = list(results.keys())

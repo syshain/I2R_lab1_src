@@ -22,7 +22,7 @@ Key transforms:
 - `T_6_C` : end-effector → camera (the unknown solved by hand-eye calibration).
 - `T_0_W = T_0_6 @ T_6_C @ T_C_W` : reconstructed artifact position in the base frame; a correct calibration makes this constant across poses.
 
-**Formulation: eye-in-hand.** The wrist-mounted camera moves with the end-effector while observing a *static* bench artifact, so the loop closes as `T_0_W = T_0_6(i) @ X @ T_C_W(i)` with `X = T_6_C` constant. This is the classic **eye-in-hand** AX = XB problem. It is solved with OpenCV's `cv2.calibrateHandEye(..., method=cv2.CALIB_HAND_EYE_PARK)`: our pairs map directly onto its convention (`T_0_6` → gripper→base, `T_C_W` → target→camera), and the returned cam→gripper transform is exactly `T_6_C`. Wrapped in `solve_hand_eye_park()` in `get_transform.py` (with `solve_eye_to_hand` kept as a backwards-compatible alias).
+**Formulation: eye-in-hand.** The wrist-mounted camera moves with the end-effector while observing a *static* bench artifact, so the loop closes as `T_0_W = T_0_6(i) @ X @ T_C_W(i)` with `X = T_6_C` constant. This is the classic **eye-in-hand** AX = XB problem. It is solved with OpenCV's `cv2.calibrateHandEye(..., method=cv2.CALIB_HAND_EYE_PARK)`: our pairs map directly onto its convention (`T_0_6` → gripper→base, `T_C_W` → target→camera), and the returned cam→gripper transform is exactly `T_6_C`. Wrapped in `solve_hand_eye_park()` in `get_transform.py`.
 
 Two physical artifacts are used:
 - **Chessboard** — printed checker pattern for camera intrinsics (`camera_calibration.py`).

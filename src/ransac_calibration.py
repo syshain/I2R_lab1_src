@@ -116,7 +116,6 @@ class RobustHandEyeCalibrator:
         self.inlier_mask = dists <= inlier_threshold_mm
 
         print(f"\n RANSAC iterations: {n_iterations}  (valid hypotheses: {solved})")
-        print(f" Best consistency : {best_score:.2f} mm")
         print(f" Inliers          : {int(self.inlier_mask.sum())}/{n} "
               f"(threshold {inlier_threshold_mm:.1f} mm)")
 
@@ -227,18 +226,18 @@ class RobustHandEyeCalibrator:
 
         ax1 = fig.add_subplot(131, projection='3d')
         if len(inlier_positions) > 0:
-            ax1.scatter(*inlier_positions.T, c='green', s=50, label='Inliers', alpha=0.7)
+            ax1.scatter(*inlier_positions.T, c='green', marker='o', s=60, label='Inliers', alpha=0.7)
         if len(outlier_positions) > 0:
-            ax1.scatter(*outlier_positions.T, c='red', s=30, label='Outliers', alpha=0.5)
+            ax1.scatter(*outlier_positions.T, c='red', marker='x', s=40, label='Outliers', alpha=0.8)
         ax1.set_xlabel('X (mm)'); ax1.set_ylabel('Y (mm)'); ax1.set_zlabel('Z (mm)')
         ax1.set_title('Artifact Position in Robot Base Frame')
         ax1.legend()
 
         ax2 = fig.add_subplot(132)
         if len(inlier_positions) > 0:
-            ax2.scatter(inlier_positions[:, 0], inlier_positions[:, 1], c='green', s=50, alpha=0.7, label='Inliers')
+            ax2.scatter(inlier_positions[:, 0], inlier_positions[:, 1], c='green', marker='o', s=60, alpha=0.7, label='Inliers')
         if len(outlier_positions) > 0:
-            ax2.scatter(outlier_positions[:, 0], outlier_positions[:, 1], c='red', s=30, alpha=0.5, label='Outliers')
+            ax2.scatter(outlier_positions[:, 0], outlier_positions[:, 1], c='red', marker='x', s=40, alpha=0.8, label='Outliers')
         ax2.set_xlabel('X (mm)'); ax2.set_ylabel('Y (mm)')
         ax2.set_title('Artifact Position (Top View)')
         ax2.legend(); ax2.grid(True)
@@ -270,17 +269,6 @@ class RobustHandEyeCalibrator:
             print(f"  Mean: ({mean[0]:.1f}, {mean[1]:.1f}, {mean[2]:.1f}) mm")
             print(f"  Std:  ({std[0]:.1f}, {std[1]:.1f}, {std[2]:.1f}) mm")
             print(f"  Max deviation from mean: {np.max(np.linalg.norm(inlier_positions - mean, axis=1)):.1f} mm")
-
-            s_max = float(np.max(std))
-            if s_max < S_MAX_EXCELLENT_MM:
-                print(f"\n✓ Calibration quality (s_max={s_max:.1f} mm): EXCELLENT")
-            elif s_max < S_MAX_GOOD_MM:
-                print(f"\n✓ Calibration quality (s_max={s_max:.1f} mm): GOOD")
-            elif s_max < S_MAX_ACCEPTABLE_MM:
-                print(f"\n⚠ Calibration quality (s_max={s_max:.1f} mm): ACCEPTABLE")
-            else:
-                print(f"\n✗ Calibration quality (s_max={s_max:.1f} mm): POOR - "
-                      f"consider re-collecting data")
 
     def _transform_block(self, T_6_C):
         """Return the matrix / translation / euler lines shared by both files."""
@@ -472,7 +460,16 @@ if __name__ == "__main__":
         final_consistency = calibrator.evaluate_consistency(
             T_6_C_refined, inlier_data)
         refine_after = final_consistency
-        print(f"\n  Final RANSAC consistency (inliers only): {final_consistency:.2f} mm")
+        s_max_final = float(np.max(calibrator._artifact_positions(inlier_data, T_6_C_refined).std(axis=0)))
+        if s_max_final < S_MAX_EXCELLENT_MM:
+            print(f"\n✓ Calibration quality (s_max={s_max_final:.1f} mm): EXCELLENT")
+        elif s_max_final < S_MAX_GOOD_MM:
+            print(f"\n✓ Calibration quality (s_max={s_max_final:.1f} mm): GOOD")
+        elif s_max_final < S_MAX_ACCEPTABLE_MM:
+            print(f"\n⚠ Calibration quality (s_max={s_max_final:.1f} mm): ACCEPTABLE")
+        else:
+            print(f"\n✗ Calibration quality (s_max={s_max_final:.1f} mm): POOR - "
+                  f"consider re-collecting data")
 
         print("\n" + "="*60)
         print("STEP 4: Visualization")
