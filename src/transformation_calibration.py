@@ -11,9 +11,9 @@ For each pose we record:
             marker corners + aruco_config.json geometry.
 
 The artifact geometry is read from ../data/aruco_config.json (a 3-D polyhedron
-of markers), matching Labs 2 and 3. The corner coordinates are defined at a
-30 mm marker scale in the config and scaled up by ARUCO_ARTIFACT_SCALE to the
-physical 40 mm markers.
+of markers), matching Labs 2 and 3. The corner coordinates in that file are
+already at the physical 40 mm marker scale, so they are used as-is with no
+runtime rescaling.
 
 Controls:
     SPACE - capture the current pose
@@ -35,7 +35,7 @@ from scipy.spatial.transform import Rotation as R
 from lab_config import (
     ROBOT_IP, CAMERA_INDEX, FRAME_WIDTH, FRAME_HEIGHT,
     ARUCO_DICT_NAME, ARUCO_MARKER_IDS,
-    ARUCO_ARTIFACT_SCALE, ARUCO_REPROJ_REJECT_PX,
+    ARUCO_REPROJ_REJECT_PX,
 )
 from fk_lite6 import fk_lite6
 import robot_io
@@ -103,7 +103,11 @@ class ArucoArtifactDetector:
         self.calibration_data = []
 
     def _build_artifact_model(self):
-        """Load marker corners from aruco_config.json, scale, and re-center."""
+        """Load marker corners from aruco_config.json and re-center.
+
+        The corner coordinates in the config are already at the physical
+        40 mm marker scale, so they are used directly (no rescaling).
+        """
         config_path = str(_DATA_DIR / 'aruco_config.json')
         with open(config_path, 'r') as f:
             cfg = json.load(f)
@@ -113,21 +117,21 @@ class ArucoArtifactDetector:
         ids = artifact['marker_ids']
         corners = artifact['marker_corners_mm']
 
-        scaled = {}
+        world = {}
         for mid, raw in zip(ids, corners):
-            pts = np.array(raw, dtype=np.float64) * ARUCO_ARTIFACT_SCALE
+            pts = np.array(raw, dtype=np.float64)
             roll = _CORNER_ROLL.get(mid, 0)
-            scaled[mid] = np.roll(pts, -roll, axis=0)
+            world[mid] = np.roll(pts, -roll, axis=0)
 
-        all_pts = np.vstack([scaled[mid] for mid in ids])
+        all_pts = np.vstack([world[mid] for mid in ids])
         centroid = all_pts.mean(axis=0)
 
-        self.marker_world = {mid: scaled[mid] - centroid for mid in ids}
+        self.marker_world = {mid: world[mid] - centroid for mid in ids}
         self.marker_ids_list = ids
         self.centroid_offset = centroid
 
         print(f"[Model] Loaded {len(ids)} markers  "
-              f"scale={ARUCO_ARTIFACT_SCALE:.4f}  "
+              f"(physical 40 mm scale, no rescale)  "
               f"centroid=[{centroid[0]:.2f},{centroid[1]:.2f},{centroid[2]:.2f}]")
 
     def start_camera(self):

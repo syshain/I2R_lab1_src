@@ -13,8 +13,8 @@ inconsistent poses via RANSAC over random pose subsets, refines by nonlinear
 least squares, plots the result, and saves:
     ../data/T_6_C_ransac.npy             # the 4x4 transform
     ../data/T_6_C_ransac.txt             # quick matrix / translation / euler
-    ../data/ransac_calibration_results.txt  # full report: params + consistency
-                                            # + baseline comparison + refinement
+    ../data/ransac_calibration_results.txt  # full report: params + s_max quality
+                                             # grade + baseline comparison + refinement
 
 Each subset hypothesis is solved with cv2.calibrateHandEye using the Park method
 (get_transform.solve_hand_eye_park), which solves the AX = XB form directly.
@@ -140,8 +140,8 @@ class RobustHandEyeCalibrator:
             print("   Solver did not converge on the full dataset.")
             return None, {}
 
-        score = self.evaluate_consistency(T_6_C, all_data)
-        print(f"   Baseline (all poses, closed form only)  {score:7.2f} mm")
+        score = float(np.max(self._artifact_positions(all_data, T_6_C).std(axis=0)))
+        print(f"   Baseline (all poses, closed form only)  s_max={score:6.2f} mm")
 
         return T_6_C, {'Baseline (all)': score}
 
@@ -192,12 +192,12 @@ class RobustHandEyeCalibrator:
 
         self.T_6_C_refined = param_to_transform(result.x)
 
-        before_std = self.evaluate_consistency(initial_T_6_C, data)
-        after_std = self.evaluate_consistency(self.T_6_C_refined, data)
+        before_smax = float(np.max(self._artifact_positions(data, initial_T_6_C).std(axis=0)))
+        after_smax = float(np.max(self._artifact_positions(data, self.T_6_C_refined).std(axis=0)))
 
-        print(f"  Before refinement: {before_std:.2f} mm std")
-        print(f"  After refinement:  {after_std:.2f} mm std")
-        print(f"  Improvement: {before_std - after_std:.2f} mm")
+        print(f"  Before refinement: s_max={before_smax:.2f} mm")
+        print(f"  After refinement:  s_max={after_smax:.2f} mm")
+        print(f"  Improvement: {before_smax - after_smax:.2f} mm")
 
         return self.T_6_C_refined
 
@@ -257,18 +257,12 @@ class RobustHandEyeCalibrator:
         plt.show()
 
         if len(inlier_positions) > 0:
-            std = np.std(inlier_positions, axis=0)
-            mean = np.mean(inlier_positions, axis=0)
+            s_max_vis = float(np.max(np.std(inlier_positions, axis=0)))
             print("\n" + "="*60)
             print("FINAL CALIBRATION RESULTS")
             print("="*60)
-            for p in inlier_positions:
-                print(p)
-            print("="*60)
-            print("Artifact position in base frame (should be constant):")
-            print(f"  Mean: ({mean[0]:.1f}, {mean[1]:.1f}, {mean[2]:.1f}) mm")
-            print(f"  Std:  ({std[0]:.1f}, {std[1]:.1f}, {std[2]:.1f}) mm")
-            print(f"  Max deviation from mean: {np.max(np.linalg.norm(inlier_positions - mean, axis=1)):.1f} mm")
+            print(f"Calibration quality (s_max={s_max_vis:.1f} mm): "
+                  f"{self._quality_grade(s_max_vis)}")
 
     def _transform_block(self, T_6_C):
         """Return the matrix / translation / euler lines shared by both files."""
@@ -298,18 +292,21 @@ class RobustHandEyeCalibrator:
         return f"POOR (s_max >= {S_MAX_ACCEPTABLE_MM:g} mm)"
 
     def save_results(self, T_6_C, filename='T_6_C_ransac.npy',
-                     n_total=None, n_inliers=None, best_consistency=None,
-                     baseline_scores=None, final_consistency=None,
+                     n_total=None, n_inliers=None, best_smax=None,
+                     baseline_scores=None, s_max=None,
                      refine_before=None, refine_after=None):
         """Save T_6_C plus a full results report into ../data/.
 
         Writes three files:
           - filename (.npy)                 : the raw 4x4 transform
           - filename with .txt              : quick matrix / translation / euler
-          - ransac_calibration_results.txt  : full report with consistency,
-                                               baseline comparison, refinement
+          - ransac_calibration_results.txt  : full report with the s_max quality
+                                              grade, baseline comparison, refinement
         The optional keyword arguments carry the statistics computed during the
         run; any that are None are simply omitted from the report.
+
+        Every metric reported here is ``s_max`` (the largest per-axis std of the
+        reconstructed artifact position), which is what the worksheet grades on.
         """
         np.save(str(_DATA_DIR / filename), T_6_C)
 
@@ -332,36 +329,38 @@ class RobustHandEyeCalibrator:
             f.write("--- SOLVED TRANSFORM ---\n")
             f.write(self._transform_block(T_6_C))
 
-            # Consistency metrics on the inlier subset.
-            if final_consistency is not None:
-                f.write("--- CONSISTENCY (reconstructed artifact position) ---\n")
-                f.write(f"Final RANSAC consistency (inliers only): "
-                        f"{final_consistency:.2f} mm (mean per-axis std)\n")
+            # Quality metric on the inlier subset.
+            if s_max is not None:
+                f.write("--- QUALITY METRIC (reconstructed artifact position) ---\n")
+                f.write(f"s_max (largest per-axis spread, inliers only): "
+                        f"{s_max:.2f} mm\n")
+                f.write(f"Calibration quality (s_max={s_max:.1f} mm): "
+                        f"{self._quality_grade(s_max)}\n")
                 if n_inliers is not None and n_total is not None:
                     f.write(f"Inliers used: {n_inliers}/{n_total} poses "
                             f"(threshold {RANSAC_INLIER_THRESHOLD_MM:g} mm)\n")
-                if best_consistency is not None:
-                    f.write(f"Best RANSAC hypothesis consistency (pre-refine): "
-                            f"{best_consistency:.2f} mm\n")
-                f.write(f"Quality grade: {self._quality_grade(final_consistency)}\n\n")
+                if best_smax is not None:
+                    f.write(f"Best RANSAC hypothesis s_max (pre-refine): "
+                            f"{best_smax:.2f} mm\n")
+                f.write("\n")
 
             # Baseline vs RANSAC comparison table.
             if baseline_scores:
                 f.write("--- BASELINE (all poses, no rejection) vs RANSAC ---\n")
-                f.write(f"{'Method':<14} {'Consistency (mm)':>18}\n")
+                f.write(f"{'Method':<14} {'s_max (mm)':>18}\n")
                 f.write("-" * 34 + "\n")
                 for name, score in sorted(baseline_scores.items(),
                                           key=lambda x: x[1]):
                     f.write(f"{name:<14} {score:>18.2f}\n")
-                if final_consistency is not None:
-                    f.write(f"{'RANSAC (inl.)':<14} {final_consistency:>18.2f}\n")
+                if s_max is not None:
+                    f.write(f"{'RANSAC (inl.)':<14} {s_max:>18.2f}\n")
                 f.write("\n")
 
             # Nonlinear refinement detail.
             if refine_before is not None and refine_after is not None:
                 f.write("--- NONLINEAR REFINEMENT (least squares) ---\n")
-                f.write(f"Before refinement: {refine_before:.2f} mm std\n")
-                f.write(f"After refinement:  {refine_after:.2f} mm std\n")
+                f.write(f"Before refinement: s_max={refine_before:.2f} mm\n")
+                f.write(f"After refinement:  s_max={refine_after:.2f} mm\n")
                 f.write(f"Improvement:       {refine_before - refine_after:.2f} mm\n")
 
         print(f"✓ Saved: ransac_calibration_results.txt")
@@ -413,22 +412,22 @@ if __name__ == "__main__":
         print("="*60)
         T_baseline, baseline_scores = calibrator.baseline_calibrate()
         if T_baseline is not None:
-            baseline_consistency = calibrator.evaluate_consistency(
-                T_baseline, calibrator.calibration_data)
-            ransac_consistency = calibrator.evaluate_consistency(
-                T_6_C, inlier_data)
+            baseline_smax = float(np.max(calibrator._artifact_positions(
+                calibrator.calibration_data, T_baseline).std(axis=0)))
+            ransac_smax = float(np.max(calibrator._artifact_positions(
+                inlier_data, T_6_C).std(axis=0)))
             print(f"\n  Baseline fitted on: ALL {n_total} poses")
             print(f"  RANSAC fitted on:   {n_inliers}/{n_total} inlier poses "
                   f"(threshold {RANSAC_INLIER_THRESHOLD_MM:g} mm)")
-            print(f"\n{'Method':<20} {'Poses':>7} {'Consistency (mm)':>18}")
+            print(f"\n{'Method':<20} {'Poses':>7} {'s_max (mm)':>18}")
             print("-"*48)
             for name, score in sorted(baseline_scores.items(),
                                       key=lambda x: x[1]):
                 print(f"  {name:<18} {n_total:>7} {score:>16.2f}")
-            print(f"  {'RANSAC (inliers)':<18} {n_inliers:>7} {ransac_consistency:>16.2f}")
-            delta = baseline_consistency - ransac_consistency
+            print(f"  {'RANSAC (inliers)':<18} {n_inliers:>7} {ransac_smax:>16.2f}")
+            delta = baseline_smax - ransac_smax
             if delta > 0:
-                print(f"\n  RANSAC improved consistency by {delta:.2f} mm "
+                print(f"\n  RANSAC reduced s_max by {delta:.2f} mm "
                       f"over the best direct method.")
             else:
                 print(f"\n  Note: direct calibration matched or beat RANSAC "
@@ -438,11 +437,12 @@ if __name__ == "__main__":
         print("\n" + "="*60)
         print("STEP 3: Nonlinear Refinement (on inlier subset)")
         print("="*60)
-        # Consistency of the RAW RANSAC estimate on the inlier subset, captured
-        # BEFORE refinement so the report can show how much the polish helped.
+        # s_max of the RAW RANSAC estimate on the inlier subset, captured BEFORE
+        # refinement so the report can show how much the polish helped.
         refine_before = None
         try:
-            refine_before = calibrator.evaluate_consistency(T_6_C, inlier_data)
+            refine_before = float(np.max(calibrator._artifact_positions(
+                inlier_data, T_6_C).std(axis=0)))
         except Exception:
             pass
         T_6_C_refined = calibrator.refine_calibration(
@@ -456,11 +456,10 @@ if __name__ == "__main__":
                   "estimate for visualization and saving.")
             T_6_C_refined = T_6_C
 
-        # Report final consistency on the inlier subset.
-        final_consistency = calibrator.evaluate_consistency(
-            T_6_C_refined, inlier_data)
-        refine_after = final_consistency
-        s_max_final = float(np.max(calibrator._artifact_positions(inlier_data, T_6_C_refined).std(axis=0)))
+        # Final s_max on the inlier subset (the graded metric).
+        s_max_final = float(np.max(calibrator._artifact_positions(
+            inlier_data, T_6_C_refined).std(axis=0)))
+        refine_after = s_max_final
         if s_max_final < S_MAX_EXCELLENT_MM:
             print(f"\n✓ Calibration quality (s_max={s_max_final:.1f} mm): EXCELLENT")
         elif s_max_final < S_MAX_GOOD_MM:
@@ -471,24 +470,37 @@ if __name__ == "__main__":
             print(f"\n✗ Calibration quality (s_max={s_max_final:.1f} mm): POOR - "
                   f"consider re-collecting data")
 
+        # Save everything first so the results are on disk even if the student
+        # closes (or crashes) the plot window before it is dismissed.
         print("\n" + "="*60)
-        print("STEP 4: Visualization")
+        print("STEP 4: Saving Results")
         print("="*60)
-        calibrator.visualize_results(T_6_C_refined)
+        # Best RANSAC hypothesis s_max (pre-refine), for the report.
+        best_smax = None
+        if getattr(calibrator, 'best_score', None) is not None:
+            try:
+                best_smax = float(np.max(calibrator._artifact_positions(
+                    inlier_data, calibrator.T_6_C).std(axis=0)))
+            except Exception:
+                pass
 
-        print("\n" + "="*60)
-        print("STEP 5: Saving Results")
-        print("="*60)
         calibrator.save_results(
             T_6_C_refined,
             n_total=n_total,
             n_inliers=n_inliers,
-            best_consistency=getattr(calibrator, 'best_score', None),
+            best_smax=best_smax,
             baseline_scores=baseline_scores,
-            final_consistency=final_consistency,
+            s_max=s_max_final,
             refine_before=refine_before,
             refine_after=refine_after,
         )
+
+        # Plot last; plt.show() blocks until the window is closed, so nothing
+        # that must be persisted should come after this point.
+        print("\n" + "="*60)
+        print("STEP 5: Visualization")
+        print("="*60)
+        calibrator.visualize_results(T_6_C_refined)
 
         print("\n" + "="*60)
         print("CALIBRATION COMPLETE!")

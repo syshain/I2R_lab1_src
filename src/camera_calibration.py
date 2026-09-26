@@ -18,7 +18,7 @@ from lab_config import (CHESSBOARD_SIZE, SQUARE_SIZE_MM, CALIB_IMAGE_PATTERN,
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _DATA_DIR = _SCRIPT_DIR.parent / 'data'
 
-def calibrate_camera(images_path='*.jpg', chessboard_size=(10, 7), square_size_mm=25.0):
+def calibrate_camera(images_path='*.jpg', chessboard_size=(10, 7), square_size_mm=15.0):
     """Estimate intrinsics + distortion from chessboard images."""
 
     criteria = (cv.TERM_CRITERIA_EPS + cv.TERM_CRITERIA_MAX_ITER, 30, 0.001)

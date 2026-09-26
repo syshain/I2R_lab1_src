@@ -39,7 +39,7 @@ CHESSBOARD_SIZE = (10, 7)
 SQUARE_SIZE_MM = 15.0
 
 # Glob pattern (relative to the data dir) matching the captured chessboard images.
-CALIB_IMAGE_PATTERN = os.path.join("calib_*.jpg")
+CALIB_IMAGE_PATTERN = "calib_*.jpg"
 
 # Quality thresholds for the camera intrinsic calibration, expressed as the RMS
 # reprojection error epsilon_rms in pixels (the value reported and entered in
@@ -57,19 +57,15 @@ CAM_CALIB_RMS_RECAPTURE_PX = 1.0     # above this -> POOR, recapture
 # artifact W). Distinct from the CHESSBOARD used for intrinsics above.
 
 # ArUco dictionary and marker IDs for the artifact. The polyhedron carries five
-# markers (IDs 0, 2, 3, 4, 5) printed from the DICT_6X6_250 set — see the
-# provided board_config.json and reference/calib_3D.py. ARUCO_DICT_NAME holds
-# the attribute name looked up on cv2.aruco via getattr(), e.g. "DICT_6X6_250".
+# markers (IDs 0, 2, 3, 4, 5) printed from the DICT_6X6_250 set. ARUCO_DICT_NAME
+# holds the attribute name looked up on cv2.aruco via getattr(), e.g.
+# "DICT_6X6_250". The corner geometry lives in ../data/aruco_config.json
 ARUCO_DICT_NAME = "DICT_6X6_250"
 ARUCO_MARKER_IDS = [0, 2, 3, 4, 5]
 
-# The board_config.json stores marker corners at a 30 mm reference scale; the
-# physical markers are 40 mm, so detected corners are scaled up by this factor.
-ARUCO_ARTIFACT_SCALE = 4.0 / 3.0
-
 # During hand-eye capture, discard any pose whose ArUco reprojection error
-# exceeds this (pixels). The worksheet says "discard any pose with a
-# reprojection error above 4 px."
+# exceeds this (pixels). Lower is stricter; 15 px is a lenient default that
+# trims only clearly-bad frames while keeping plenty of usable poses.
 ARUCO_REPROJ_REJECT_PX = 15.0
 
 # ---------------------------------------------------------------------------

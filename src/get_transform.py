@@ -218,7 +218,6 @@ if __name__ == "__main__":
     print("-" * 68)
     print(f"mean art@base : ({cons['mean'][0]:.2f},{cons['mean'][1]:.2f},{cons['mean'][2]:.2f}) mm")
     print(f"std XYZ       : ({cons['std'][0]:.3f},{cons['std'][1]:.3f},{cons['std'][2]:.3f}) mm")
-    print(f"RMS error norm: {cons['rms']:.3f} mm   max dev: {cons['max_dev']:.3f} mm")
 
     euler_xyz = R.from_matrix(T_6_C[:3, :3]).as_euler('xyz', degrees=True)
 

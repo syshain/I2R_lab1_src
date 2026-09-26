@@ -87,16 +87,14 @@ def report(name, s):
     print(f"  Poses evaluated : {s['n']}")
     print(f"  Mean position   : ({mean[0]:8.2f}, {mean[1]:8.2f}, {mean[2]:8.2f}) mm")
     print(f"  Std dev (xyz)   : ({std[0]:6.2f}, {std[1]:6.2f}, {std[2]:6.2f}) mm")
-    print(f"  Max deviation   : {s['max_dev']:.2f} mm from mean")
-    print(f"  RMS scatter     : {s['rms']:.2f} mm")
     if s_max < S_MAX_EXCELLENT_MM:
-        print(f"✓ Calibration quality (s_max={s_max:.1f} mm): EXCELLENT")
+        print(f"  ✓ Calibration quality (s_max={s_max:.1f} mm): EXCELLENT")
     elif s_max < S_MAX_GOOD_MM:
-        print(f"✓ Calibration quality (s_max={s_max:.1f} mm): GOOD")
+        print(f"  ✓ Calibration quality (s_max={s_max:.1f} mm): GOOD")
     elif s_max < S_MAX_ACCEPTABLE_MM:
-        print(f"⚠ Calibration quality (s_max={s_max:.1f} mm): ACCEPTABLE")
+        print(f"  ⚠ Calibration quality (s_max={s_max:.1f} mm): ACCEPTABLE")
     else:
-        print(f"✗ Calibration quality (s_max={s_max:.1f} mm): POOR - "
+        print(f"  ✗ Calibration quality (s_max={s_max:.1f} mm): POOR - "
               f"consider re-capturing with more variation")
 
 
@@ -158,8 +156,6 @@ def write_validation_report(transforms, results):
                     f"{mean[2]:8.2f}) mm\n")
             f.write(f"Std dev (xyz)   : ({std[0]:6.2f}, {std[1]:6.2f}, "
                     f"{std[2]:6.2f}) mm\n")
-            f.write(f"Max deviation   : {s['max_dev']:.2f} mm from mean\n")
-            f.write(f"RMS scatter     : {s['rms']:.2f} mm\n")
             if s_max < S_MAX_EXCELLENT_MM:
                 grade = "EXCELLENT"
             elif s_max < S_MAX_GOOD_MM:
@@ -178,17 +174,14 @@ def write_validation_report(transforms, results):
             f.write(f"{'Metric':<25} {a:>14} {b:>14}\n")
             f.write("-" * 55 + "\n")
             sa, sb = results[a], results[b]
-            f.write(f"{'Max deviation (mm)':<25} {sa['max_dev']:>14.2f} "
-                    f"{sb['max_dev']:>14.2f}\n")
-            f.write(f"{'RMS scatter (mm)':<25} {sa['rms']:>14.2f} "
-                    f"{sb['rms']:>14.2f}\n")
+            sma, smb = float(np.max(sa['std'])), float(np.max(sb['std']))
+            f.write(f"{'s_max (mm)':<25} {sma:>14.2f} {smb:>14.2f}\n")
             for axis, label in enumerate(['X', 'Y', 'Z']):
                 f.write(f"{'Std ' + label + ' (mm)':<25} {sa['std'][axis]:>14.2f} "
                         f"{sb['std'][axis]:>14.2f}\n")
-            winner = b if sb['max_dev'] < sa['max_dev'] else \
-                     (a if sa['max_dev'] < sb['max_dev'] else 'Tie')
-            diff = abs(sa['max_dev'] - sb['max_dev'])
-            f.write(f"\nWinner (tighter max-deviation): {winner} by {diff:.2f} mm\n")
+            winner = b if smb < sma else (a if sma < smb else 'Tie')
+            diff = abs(sma - smb)
+            f.write(f"\nWinner (lower s_max): {winner} by {diff:.2f} mm\n")
 
     print(f"\n✓ Saved: validation_results.txt")
 
@@ -309,15 +302,14 @@ def main():
         print("=" * 60)
         print(f"{'Metric':<25} {a[:12]:>12} {b[:12]:>12}")
         print("-" * 50)
-        print(f"{'Max deviation (mm)':<25} {sa['max_dev']:>12.2f} {sb['max_dev']:>12.2f}")
-        print(f"{'RMS scatter (mm)':<25} {sa['rms']:>12.2f} {sb['rms']:>12.2f}")
+        sma, smb = float(np.max(sa['std'])), float(np.max(sb['std']))
+        print(f"{'s_max (mm)':<25} {sma:>12.2f} {smb:>12.2f}")
         for axis, label in enumerate(['X', 'Y', 'Z']):
             print(f"{'Std ' + label + ' (mm)':<25} {sa['std'][axis]:>12.2f} "
                   f"{sb['std'][axis]:>12.2f}")
-        winner = b if sb['max_dev'] < sa['max_dev'] else \
-                 (a if sa['max_dev'] < sb['max_dev'] else 'Tie')
-        diff = abs(sa['max_dev'] - sb['max_dev'])
-        print(f"\n  → {winner} is tighter by {diff:.2f} mm (max-deviation metric).")
+        winner = b if smb < sma else (a if sma < smb else 'Tie')
+        diff = abs(sma - smb)
+        print(f"\n  → {winner} has lower s_max by {diff:.2f} mm.")
 
     # Persist everything to validation_results.txt.
     write_validation_report(transforms, results)
