@@ -76,7 +76,7 @@ ARUCO_REPROJ_REJECT_PX = 15.0
 # More iterations -> more thorough search, slower. 2000 is a good default.
 RANSAC_ITERATIONS = 2000
 
-# A pose is an "inlier" if its reconstructed board position lies within this
+# A pose is an "inlier" if its reconstructed artifact position lies within this
 # many mm of the consensus. Laxer keeps more poses in the final fit; tighter
 # rejects borderline frames. Applied after the initial nonlinear polish.
 RANSAC_INLIER_THRESHOLD_MM = 15.0

@@ -1,6 +1,6 @@
 """Hand-eye calibration via FK-derived robot poses.
 
-Setup: a camera is mounted on the robot wrist and observes a STATIC ArUco board
+Setup: a camera is mounted on the robot wrist and observes a STATIC ArUco artifact
 fixed to the bench. This is an EYE-IN-HAND setup: the camera moves with the
 end-effector while the observed target stays fixed in the base frame.
 
@@ -10,7 +10,7 @@ Notation:
 
 The unknown is T_6_C (end-effector -> camera). The loop closure per pose i is
     T_0_W = T_0_6(i) @ T_6_C @ T_C_W(i)
-where T_0_W (board position in base frame) is constant across all poses. We solve
+where T_0_W (artifact position in base frame) is constant across all poses. We solve
 for T_6_C with cv2.calibrateHandEye using the Park method (AX = XB form, see
 solve_hand_eye_park); a correct fit makes the reconstructed T_0_W collapse onto
 a single point.
