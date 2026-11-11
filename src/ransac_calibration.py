@@ -41,6 +41,7 @@ class RobustHandEyeCalibrator:
         self.calibration_data = []
         self.T_6_C = None
         self.inlier_mask = None
+        self.robot_sn = 'not recorded'
 
     # The Park solver needs at least 3 poses (3 relative-rotation pairs to span
     # 3D rotation space); we sample 4 per hypothesis for margin. Sampling small
@@ -226,9 +227,11 @@ class RobustHandEyeCalibrator:
 
         ax1 = fig.add_subplot(131, projection='3d')
         if len(inlier_positions) > 0:
-            ax1.scatter(*inlier_positions.T, c='green', marker='o', s=60, label='Inliers', alpha=0.7)
+            ax1.scatter(inlier_positions[:, 0], inlier_positions[:, 1], inlier_positions[:, 2],
+                        c='green', marker='o', s=60, label='Inliers', alpha=0.7)
         if len(outlier_positions) > 0:
-            ax1.scatter(*outlier_positions.T, c='red', marker='x', s=40, label='Outliers', alpha=0.8)
+            ax1.scatter(outlier_positions[:, 0], outlier_positions[:, 1], outlier_positions[:, 2],
+                        c='red', marker='x', s=40, label='Outliers', alpha=0.8)
         ax1.set_xlabel('X (mm)'); ax1.set_ylabel('Y (mm)'); ax1.set_zlabel('Z (mm)')
         ax1.set_title('Artifact Position in Robot Base Frame')
         ax1.legend()
@@ -257,7 +260,9 @@ class RobustHandEyeCalibrator:
         plt.show()
 
         if len(inlier_positions) > 0:
-            s_max_vis = float(np.max(np.std(inlier_positions, axis=0)))
+            # Sample std (n-1), matching the handout formula and
+            # validate_calibration.py.
+            s_max_vis = float(np.max(np.std(inlier_positions, axis=0, ddof=1)))
             print("\n" + "="*60)
             print("FINAL CALIBRATION RESULTS")
             print("="*60)
@@ -315,12 +320,14 @@ class RobustHandEyeCalibrator:
         with open(str(_DATA_DIR / txt_name), 'w') as f:
             f.write("Hand-Eye Calibration Result: T_6_C (RANSAC)\n")
             f.write("=" * 60 + "\n\n")
+            f.write(f"robot_sn: {self.robot_sn}\n\n")
             f.write(self._transform_block(T_6_C))
         print(f"✓ Saved: {txt_name}")
 
         # --- Full results report --------------------------------------------
         report_path = str(_DATA_DIR / 'ransac_calibration_results.txt')
         with open(report_path, 'w') as f:
+            f.write(f"robot_sn: {self.robot_sn}\n")
             f.write("ROBUST HAND-EYE CALIBRATION RESULTS (RANSAC)\n")
             f.write("=" * 60 + "\n\n")
             f.write("Worksheet notation: base=0, end-effector=6, camera=C,\n")
@@ -380,7 +387,12 @@ if __name__ == "__main__":
     try:
         data = np.load(str(_DATA_DIR / 'calibration_data.npy'), allow_pickle=True)
         calibrator.calibration_data = data.tolist()
-        print(f"\nLoaded {len(calibrator.calibration_data)} existing poses")
+        if calibrator.calibration_data:
+            # Propagate the bench identity recorded at capture time.
+            calibrator.robot_sn = calibrator.calibration_data[0].get(
+                'robot_sn', 'not recorded')
+        print(f"\nLoaded {len(calibrator.calibration_data)} existing poses "
+              f"(robot_sn: {calibrator.robot_sn})")
     except FileNotFoundError:
         print("\nNo existing data found. Please capture new poses first "
               "(see transformation_calibration.py).")

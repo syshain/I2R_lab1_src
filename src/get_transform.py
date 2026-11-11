@@ -135,19 +135,22 @@ def evaluate_consistency(T_6_C, data):
     mean_pos = positions.mean(axis=0)
     deviations = positions - mean_pos
     rms_norm = float(np.sqrt(np.mean(np.sum(deviations ** 2, axis=1))))
-    std_pos = positions.std(axis=0)
+    # Sample std (n-1), matching the handout formula and validate_calibration.py.
+    std_pos = positions.std(axis=0, ddof=1)
     max_dev = float(np.max(np.linalg.norm(deviations, axis=1)))
 
     return {'positions': positions, 'mean': mean_pos, 'std': std_pos,
             'rms': rms_norm, 'max_dev': max_dev}
 
 
-def save_result(T_6_C, filename_npy='T_6_C_normal.npy', filename_txt='T_6_C_normal.txt'):
+def save_result(T_6_C, filename_npy='T_6_C_normal.npy', filename_txt='T_6_C_normal.txt',
+                robot_sn='not recorded'):
     np.save(str(_DATA_DIR / filename_npy), T_6_C)
 
     with open(str(_DATA_DIR / filename_txt), 'w') as f:
         f.write("Hand-Eye Calibration Result: T_6_C (cv2 Park method)\n")
         f.write("=" * 60 + "\n\n")
+        f.write(f"robot_sn: {robot_sn}\n\n")
         f.write("4x4 Transformation Matrix:\n")
         for row in T_6_C:
             f.write(f"{row[0]:12.6f} {row[1]:12.6f} {row[2]:12.6f} {row[3]:12.6f}\n")
@@ -240,5 +243,6 @@ if __name__ == "__main__":
         print(f"\n✗ Calibration quality (s_max={s_max:.1f} mm): POOR - "
               f"re-capture with broader wrist motion / depth variety")
 
-    save_result(T_6_C)
+    robot_sn = valid_data[0].get('robot_sn', 'not recorded')
+    save_result(T_6_C, robot_sn=robot_sn)
     print("\nSaved: T_6_C_normal.npy, T_6_C_normal.txt (in data/)")

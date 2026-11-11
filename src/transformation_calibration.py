@@ -98,6 +98,7 @@ class ArucoArtifactDetector:
         self._build_artifact_model()
 
         self.arm = robot_io.connect_arm(ROBOT_IP)
+        self.robot_sn = robot_io.get_robot_sn(self.arm)
         self.cap = None
         self.camera_index = camera_index
         self.calibration_data = []
@@ -267,6 +268,7 @@ class ArucoArtifactDetector:
 
         self.calibration_data.append({
             'pose_id': pose_id,
+            'robot_sn': self.robot_sn,
             'T_0_6': T_0_6,               # FK-derived (authoritative)
             'robot_joints': joints_deg,    # [q1..q6] degrees, from get_angle()
             'robot_pose_raw': raw_pose,    # cartesian cross-check (may be None)

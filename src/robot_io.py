@@ -51,6 +51,20 @@ def connect_arm(ip=_DEFAULT_ROBOT_IP):
     return arm
 
 
+def get_robot_sn(arm):
+    """The robot's serial number, so saved data can be traced back to its bench.
+
+    Returns 'not recorded' rather than raising: a failed SN read must never
+    stop a capture from being saved."""
+    try:
+        code, sn = arm.get_robot_sn()
+        if code == 0 and sn:
+            return str(sn)
+    except Exception:
+        pass
+    return 'not recorded'
+
+
 def read_joints_rad(arm):
     """Current joint angles as a (6,) array in radians."""
     code, res = arm.get_servo_angle(is_radian=True)
