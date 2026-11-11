@@ -72,6 +72,8 @@ class RobustHandEyeCalibrator:
             art_positions.append(T_0_W[:3, 3])
 
         art_positions = np.array(art_positions)
+        # Internal RANSAC scoring only (never displayed), so the population
+        # std is kept: it scales every candidate the same way.
         return np.mean(np.std(art_positions, axis=0))
 
     def ransac_calibrate(self, n_iterations=2000, inlier_threshold_mm=10.0,
@@ -141,7 +143,8 @@ class RobustHandEyeCalibrator:
             print("   Solver did not converge on the full dataset.")
             return None, {}
 
-        score = float(np.max(self._artifact_positions(all_data, T_6_C).std(axis=0)))
+        # Sample std (n-1), matching the handout formula and validate_calibration.py.
+        score = float(np.max(self._artifact_positions(all_data, T_6_C).std(axis=0, ddof=1)))
         print(f"   Baseline (all poses, closed form only)  s_max={score:6.2f} mm")
 
         return T_6_C, {'Baseline (all)': score}
@@ -193,8 +196,8 @@ class RobustHandEyeCalibrator:
 
         self.T_6_C_refined = param_to_transform(result.x)
 
-        before_smax = float(np.max(self._artifact_positions(data, initial_T_6_C).std(axis=0)))
-        after_smax = float(np.max(self._artifact_positions(data, self.T_6_C_refined).std(axis=0)))
+        before_smax = float(np.max(self._artifact_positions(data, initial_T_6_C).std(axis=0, ddof=1)))
+        after_smax = float(np.max(self._artifact_positions(data, self.T_6_C_refined).std(axis=0, ddof=1)))
 
         print(f"  Before refinement: s_max={before_smax:.2f} mm")
         print(f"  After refinement:  s_max={after_smax:.2f} mm")
@@ -425,9 +428,9 @@ if __name__ == "__main__":
         T_baseline, baseline_scores = calibrator.baseline_calibrate()
         if T_baseline is not None:
             baseline_smax = float(np.max(calibrator._artifact_positions(
-                calibrator.calibration_data, T_baseline).std(axis=0)))
+                calibrator.calibration_data, T_baseline).std(axis=0, ddof=1)))
             ransac_smax = float(np.max(calibrator._artifact_positions(
-                inlier_data, T_6_C).std(axis=0)))
+                inlier_data, T_6_C).std(axis=0, ddof=1)))
             print(f"\n  Baseline fitted on: ALL {n_total} poses")
             print(f"  RANSAC fitted on:   {n_inliers}/{n_total} inlier poses "
                   f"(threshold {RANSAC_INLIER_THRESHOLD_MM:g} mm)")
@@ -454,7 +457,7 @@ if __name__ == "__main__":
         refine_before = None
         try:
             refine_before = float(np.max(calibrator._artifact_positions(
-                inlier_data, T_6_C).std(axis=0)))
+                inlier_data, T_6_C).std(axis=0, ddof=1)))
         except Exception:
             pass
         T_6_C_refined = calibrator.refine_calibration(
@@ -470,7 +473,7 @@ if __name__ == "__main__":
 
         # Final s_max on the inlier subset (the graded metric).
         s_max_final = float(np.max(calibrator._artifact_positions(
-            inlier_data, T_6_C_refined).std(axis=0)))
+            inlier_data, T_6_C_refined).std(axis=0, ddof=1)))
         refine_after = s_max_final
         if s_max_final < S_MAX_EXCELLENT_MM:
             print(f"\n✓ Calibration quality (s_max={s_max_final:.1f} mm): EXCELLENT")
@@ -492,7 +495,7 @@ if __name__ == "__main__":
         if getattr(calibrator, 'best_score', None) is not None:
             try:
                 best_smax = float(np.max(calibrator._artifact_positions(
-                    inlier_data, calibrator.T_6_C).std(axis=0)))
+                    inlier_data, calibrator.T_6_C).std(axis=0, ddof=1)))
             except Exception:
                 pass
 

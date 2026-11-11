@@ -43,7 +43,7 @@ CALIB_IMAGE_PATTERN = "calib_*.jpg"
 
 # Quality thresholds for the camera intrinsic calibration, expressed as the RMS
 # reprojection error epsilon_rms in pixels (the value reported and entered in
-# Table 2). Per the worksheet: it "should be below 0.5 px; above 1.0 px,
+# Table 3). Per the worksheet: it "should be below 0.5 px; above 1.0 px,
 # recapture with more varied views." Values between the two are fine but not
 # ideal.
 CAM_CALIB_RMS_GOOD_TARGET_PX = 0.5   # at/below this -> EXCELLENT
