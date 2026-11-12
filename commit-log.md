@@ -45,3 +45,6 @@ Initial commit of working lab 1 code
 # v6.0 - Consistency with lab 1 handout
 - Previous commit only fixed np.std find and replaces. This commit fixes that. 
 
+# v6.1 - Replaced placeholders with NotImplementedError stubs
+- <TO_FILL> placeholders in fk_lite6.py replaced with NotImplementedError stubs
+

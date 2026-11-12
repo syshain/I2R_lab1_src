@@ -15,17 +15,12 @@ Returns a 4x4 homogeneous transform whose translation column is in MM.
 import numpy as np
 
 # Modified-DH columns: [theta_offset_deg, d_mm, alpha_deg, a_mm]
-_DH = np.array([
-"""
-<TO_FILL>
-Refer UFACTORY Lite 6 documentation
-Fill in the modified DH parameters as 2 dimensional array
-"""
-])
+# TODO: fill in the modified DH parameters as a 2-D array (6 rows) from the
+# UFACTORY Lite 6 documentation.
+_DH = None
 
 
 def _link_transform(theta_rad, d_mm, alpha_rad, a_mm):
-    # <TO_FILL>
     """One modified (Craig) DH link transform.
 
     TODO: build the 4x4 matrix from theta_rad, d_mm, alpha_rad, a_mm using the
@@ -53,6 +48,10 @@ def fk_lite6(q):
     if q.shape != (6,):
         raise ValueError(f"fk_lite6 expects 6 joint angles, got shape {q.shape}")
 
+    if _DH is None:
+        raise NotImplementedError(
+            'fk_lite6: fill in the _DH table first (see the TODO above it)')
+
     d = _DH[:, 1]
     a = _DH[:, 3]
     alpha = np.deg2rad(_DH[:, 2])
@@ -61,8 +60,11 @@ def fk_lite6(q):
     # TODO: chain the six _link_transform calls, adding theta_offset[i] to q[i].
     T = np.eye(4)
     for i in range(6):
-        # theta = <TO_FILL> # How do theta and q relate to each other?
-        # T =  <TO_FILL> # Use the _link_transform function filled in above to generate the link-wise transformation matrix. Multiply all to get the final transform matrix
+        # theta: q[i] plus the row's theta offset (how do theta and q relate?)
+        # T: multiply the link transform for joint i into T, using
+        # _link_transform and the row's d, alpha, a.
+        raise NotImplementedError(
+            'fk_lite6: chain the six _link_transform calls (see the TODO above)')
 
     return T
 
