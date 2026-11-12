@@ -48,3 +48,7 @@ Initial commit of working lab 1 code
 # v6.1 - Replaced placeholders with NotImplementedError stubs
 - <TO_FILL> placeholders in fk_lite6.py replaced with NotImplementedError stubs
 
+# v6.2 - docs updated, ransac silent warning fixed
+### 12 Nov 2026 
+- docs/STRUCTURE.md updated with the latest repository structure
+- ransac_calibration.py in src/ fails loudly now when less than 4 poses survive the thresholding

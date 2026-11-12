@@ -42,6 +42,9 @@ class RobustHandEyeCalibrator:
         self.T_6_C = None
         self.inlier_mask = None
         self.robot_sn = 'not recorded'
+        # Set by refine_calibration(): True when fewer than 4 poses survived the
+        # threshold and the refinement ran on the full set instead.
+        self.refine_on_all_poses = False
 
     # The Park solver needs at least 3 poses (3 relative-rotation pairs to span
     # 3D rotation space); we sample 4 per hypothesis for margin. Sampling small
@@ -160,9 +163,15 @@ class RobustHandEyeCalibrator:
         data = self._inlier_subset(use_inliers)
 
         # Refining on a handful of inliers over-fits; if RANSAC kept fewer than 4
-        # poses, widen to the full set so the optimizer has real leverage.
+        # poses, widen to the full set so the optimizer has real leverage. The
+        # fallback is recorded in refine_on_all_poses so the report can say which
+        # poses the refinement actually used.
+        self.refine_on_all_poses = False
         if len(data) < 4:
             data = self.calibration_data
+            self.refine_on_all_poses = True
+            print(f"\n⚠ Only {len(self._inlier_subset(use_inliers))} poses survived the "
+                  f"threshold: refining on ALL {len(data)} poses instead.")
 
         if initial_T_6_C is None:
             initial_T_6_C = self.T_6_C
@@ -302,7 +311,8 @@ class RobustHandEyeCalibrator:
     def save_results(self, T_6_C, filename='T_6_C_ransac.npy',
                      n_total=None, n_inliers=None, best_smax=None,
                      baseline_scores=None, s_max=None,
-                     refine_before=None, refine_after=None):
+                     refine_before=None, refine_after=None,
+                     refine_note=None):
         """Save T_6_C plus a full results report into ../data/.
 
         Writes three files:
@@ -372,6 +382,8 @@ class RobustHandEyeCalibrator:
                 f.write(f"Before refinement: s_max={refine_before:.2f} mm\n")
                 f.write(f"After refinement:  s_max={refine_after:.2f} mm\n")
                 f.write(f"Improvement:       {refine_before - refine_after:.2f} mm\n")
+            if refine_note is not None:
+                f.write(f"\nNOTE: {refine_note}\n")
 
         print(f"✓ Saved: ransac_calibration_results.txt")
 
@@ -485,6 +497,22 @@ if __name__ == "__main__":
             print(f"\n✗ Calibration quality (s_max={s_max_final:.1f} mm): POOR - "
                   f"consider re-collecting data")
 
+        # Disclose the sub-4-inlier fallback: the refinement (and therefore the
+        # saved transform) was fitted on more poses than the report's inlier
+        # count suggests.
+        refine_note = None
+        if calibrator.refine_on_all_poses:
+            s_max_all = float(np.max(calibrator._artifact_positions(
+                calibrator.calibration_data, T_6_C_refined).std(axis=0, ddof=1)))
+            refine_note = (f"fewer than 4 poses survived the threshold, so the "
+                           f"refinement ran on ALL {n_total} poses, not just the "
+                           f"{n_inliers} inliers. s_max on all poses: "
+                           f"{s_max_all:.2f} mm; on the inliers: {s_max_final:.2f} mm.")
+            print(f"\n⚠ Fewer than 4 poses survived the threshold: the refinement ran "
+                  f"on ALL {n_total} poses, not just the {n_inliers} inliers.")
+            print(f"  s_max on all poses: {s_max_all:.2f} mm; "
+                  f"on the {n_inliers} inliers: {s_max_final:.2f} mm.")
+
         # Save everything first so the results are on disk even if the student
         # closes (or crashes) the plot window before it is dismissed.
         print("\n" + "="*60)
@@ -508,6 +536,7 @@ if __name__ == "__main__":
             s_max=s_max_final,
             refine_before=refine_before,
             refine_after=refine_after,
+            refine_note=refine_note,
         )
 
         # Plot last; plt.show() blocks until the window is closed, so nothing
